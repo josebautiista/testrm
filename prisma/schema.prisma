@@ -36,6 +36,7 @@ model Ejercicio {
 model Sesion {
   id        Int      @id @default(autoincrement())
   personaId Int
+  requestId String?  @unique
   createdAt DateTime @default(now())
 
   persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -72,6 +73,7 @@ model ResultadoEjercicio {
 
 model AdminOtp {
   id        Int      @id @default(autoincrement())
+  requestId String?  @unique
   code      String
   expiresAt DateTime
   used      Boolean  @default(false)

@@ -28,11 +28,6 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-const DEFAULT_STATE: VerifyAdminOtpState = {
-  success: false,
-  error: null,
-};
-
 export async function verifyAdminOtp(
   _prevState: VerifyAdminOtpState,
   formData: FormData,

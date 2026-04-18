@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { redirect } from "next/navigation";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
@@ -42,6 +43,7 @@ export default async function NuevaSesionPage({
 
   const cc = typeof rawCC === "string" ? rawCC.trim() : "";
   const error = typeof rawError === "string" ? rawError : "";
+  const requestId = randomUUID();
 
   if (!cc) {
     redirect("/");
@@ -86,6 +88,7 @@ export default async function NuevaSesionPage({
 
       <form action={createSesionAction} className="space-y-8">
         <input type="hidden" name="cc" value={cc} />
+        <input type="hidden" name="requestId" value={requestId} />
 
         <Section title="Ejercicios">
           <div className="divide-y divide-white/6">

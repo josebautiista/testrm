@@ -1,7 +1,7 @@
 "use server";
 
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { Resend } from "resend";
 
 type SendAdminOtpState = {
@@ -9,6 +9,20 @@ type SendAdminOtpState = {
   sent: boolean;
   error: string | null;
 };
+
+function normalizeRequestId(value: string) {
+  return value.trim();
+}
+
+function parseRequestId(formData: FormData) {
+  const requestId = normalizeRequestId(
+    typeof formData.get("requestId") === "string"
+      ? (formData.get("requestId") as string)
+      : "",
+  );
+
+  return requestId || null;
+}
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -30,15 +44,20 @@ if (process.env.NODE_ENV !== "production") {
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const DEFAULT_STATE: SendAdminOtpState = {
-  success: false,
-  sent: false,
-  error: null,
-};
-
 export async function sendAdminOtp(
   _prevState: SendAdminOtpState,
+  formData: FormData,
 ): Promise<SendAdminOtpState> {
+  const requestId = parseRequestId(formData);
+
+  if (!requestId) {
+    return {
+      success: false,
+      sent: false,
+      error: "No fue posible preparar el envio del codigo.",
+    };
+  }
+
   const adminEmail = process.env.ADMIN_EMAILS?.trim();
 
   if (!process.env.RESEND_API_KEY || !adminEmail) {
@@ -79,13 +98,29 @@ export async function sendAdminOtp(
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = new Date(now.getTime() + 5 * 60_000);
 
-  await prisma.adminOtp.create({
-    data: {
-      code,
-      expiresAt,
-      used: false,
-    },
-  });
+  try {
+    await prisma.adminOtp.create({
+      data: {
+        requestId,
+        code,
+        expiresAt,
+        used: false,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return {
+        success: true,
+        sent: true,
+        error: null,
+      };
+    }
+
+    throw error;
+  }
 
   try {
     await resend.emails.send({
@@ -101,6 +136,12 @@ export async function sendAdminOtp(
       error: null,
     };
   } catch {
+    await prisma.adminOtp.deleteMany({
+      where: {
+        requestId,
+      },
+    });
+
     return {
       success: false,
       sent: false,

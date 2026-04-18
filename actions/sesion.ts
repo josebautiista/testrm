@@ -13,6 +13,7 @@ type ResultadoInput = {
 
 type CreateSesionInput = {
   cc: string;
+  requestId: string;
   ejercicios: ResultadoInput[];
 };
 
@@ -40,6 +41,10 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 function normalizeCC(value: string) {
+  return value.trim();
+}
+
+function normalizeRequestId(value: string) {
   return value.trim();
 }
 
@@ -80,9 +85,22 @@ function parseCreateSesionInput(
       ? (formData.get("cc") as string)
       : "",
   );
+  const requestId = normalizeRequestId(
+    typeof formData.get("requestId") === "string"
+      ? (formData.get("requestId") as string)
+      : "",
+  );
 
   if (!cc) {
     return { ok: false, error: "CC invalido.", cc: "" };
+  }
+
+  if (!requestId) {
+    return {
+      ok: false,
+      error: "No fue posible preparar el envio de la sesion.",
+      cc,
+    };
   }
 
   const rawEjercicioIds = formData.getAll("ejercicioIds");
@@ -121,6 +139,7 @@ function parseCreateSesionInput(
     ok: true,
     data: {
       cc,
+      requestId,
       ejercicios: resultados,
     },
   };
@@ -173,10 +192,17 @@ export async function createSesion(
   input: CreateSesionInput,
 ): Promise<CreateSesionResult> {
   const cc = normalizeCC(typeof input.cc === "string" ? input.cc : "");
+  const requestId = normalizeRequestId(
+    typeof input.requestId === "string" ? input.requestId : "",
+  );
   const sanitizedEjercicios = sanitizeInputEjercicios(input.ejercicios);
 
   if (!cc) {
     throw new Error("CC invalido.");
+  }
+
+  if (!requestId) {
+    throw new Error("No fue posible preparar el envio de la sesion.");
   }
 
   if (sanitizedEjercicios.length === 0) {
@@ -245,6 +271,7 @@ export async function createSesion(
       return tx.sesion.create({
         data: {
           personaId: persona.id,
+          requestId,
           createdAt: new Date(),
           resultados: {
             create: resultadosData,
@@ -261,6 +288,29 @@ export async function createSesion(
       sesionId: createdSesion.id,
     };
   } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const existingSesion = await prisma.sesion.findUnique({
+        where: {
+          requestId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (existingSesion) {
+        return {
+          success: true,
+          sesionId: existingSesion.id,
+        };
+      }
+
+      throw new Error("No fue posible guardar la sesion. Intenta nuevamente.");
+    }
+
     if (error instanceof Error) {
       if (
         error.message === "CC invalido." ||

@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { sendAdminOtp } from "@/app/actions/sendAdminOtp";
 import { verifyAdminOtp } from "@/app/actions/verifyAdminOtp";
+import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
 import { resolvePersonaEntry, type EntryState } from "@/actions/persona";
@@ -29,11 +30,12 @@ const verifyAdminOtpInitialState = {
 export default function HomePage() {
   const router = useRouter();
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const adminRequestId = useId();
   const [state, formAction, isPending] = useActionState(
     resolvePersonaEntry,
     initialState,
   );
-  const [sendState, sendAction, isSendingOtp] = useActionState(
+  const [sendState, sendAction] = useActionState(
     sendAdminOtp,
     sendAdminOtpInitialState,
   );
@@ -122,12 +124,17 @@ export default function HomePage() {
 
             {!sendState.sent ? (
               <form action={sendAction} className="space-y-4">
+                <input
+                  type="hidden"
+                  name="requestId"
+                  value={adminRequestId}
+                />
                 <p className="text-sm text-text-secondary">
                   Solicita un codigo temporal para acceso admin.
                 </p>
-                <PrimaryButton type="submit" disabled={isSendingOtp}>
-                  {isSendingOtp ? "Enviando" : "Enviar OTP"}
-                </PrimaryButton>
+                <FormSubmitButton pendingLabel="Enviando">
+                  Enviar OTP
+                </FormSubmitButton>
               </form>
             ) : (
               <form action={verifyAction} className="space-y-4">
