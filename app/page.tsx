@@ -124,11 +124,7 @@ export default function HomePage() {
 
             {!sendState.sent ? (
               <form action={sendAction} className="space-y-4">
-                <input
-                  type="hidden"
-                  name="requestId"
-                  value={adminRequestId}
-                />
+                <input type="hidden" name="requestId" value={adminRequestId} />
                 <p className="text-sm text-text-secondary">
                   Solicita un codigo temporal para acceso admin.
                 </p>
