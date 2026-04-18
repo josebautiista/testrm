@@ -190,6 +190,7 @@ export async function createSesion(
         select: {
           id: true,
           masaCorporal: true,
+          sexo: true,
         },
       });
 
@@ -208,6 +209,7 @@ export async function createSesion(
         persona.masaCorporal,
         ejerciciosDB,
         sanitizedEjercicios,
+        persona.sexo,
       );
 
       const ejerciciosPermitidos = new Set(

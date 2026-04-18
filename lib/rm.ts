@@ -9,6 +9,8 @@ export type RMResult = {
   baechle: number;
 };
 
+export type SexoRM = "masculino" | "femenino";
+
 type SessionExercise = {
   id: number;
   porcentajeMasa: number;
@@ -73,6 +75,48 @@ function ensureValidNumber(value: number) {
   }
 
   return value;
+}
+
+function normalizeSexo(sexo?: string): SexoRM {
+  if (typeof sexo !== "string") {
+    return "masculino";
+  }
+
+  const normalized = sexo.trim().toLowerCase();
+  return normalized === "femenino" ? "femenino" : "masculino";
+}
+
+function calculateRMFemenino(carga: number, reps: number): RMResult {
+  // Female formulas requested by product requirements.
+  const epley = roundToTwo(ensureValidNumber(0.0333 * carga * reps + carga));
+  const brzycki = roundToTwo(
+    ensureValidNumber(safeDivide(carga, 1.0278 - 0.0278 * reps)),
+  );
+  const lombardi = roundToTwo(ensureValidNumber(reps ** 0.1 * carga));
+  const lander = roundToTwo(
+    ensureValidNumber(safeDivide(carga, 1.013 - 0.0267123 * reps)),
+  );
+  const oconnor = roundToTwo(ensureValidNumber(0.025 * reps * carga + carga));
+  const mayhew = roundToTwo(
+    ensureValidNumber(safeDivide(100 * carga, 52.2 + 41.9 * Math.exp(-0.055 * reps))),
+  );
+  const wathen = roundToTwo(
+    ensureValidNumber(safeDivide(100 * carga, 48.8 + 53.8 * Math.exp(-0.075 * reps))),
+  );
+  const baechle = roundToTwo(
+    ensureValidNumber(carga * (1 + 0.033 * reps)),
+  );
+
+  return {
+    epley,
+    brzycki,
+    lombardi,
+    lander,
+    oconnor,
+    mayhew,
+    wathen,
+    baechle,
+  };
 }
 
 export function calculateEpley(carga: number, reps: number): number {
@@ -159,7 +203,11 @@ export function calculateBaechle(carga: number, reps: number): number {
   return roundToTwo(ensureValidNumber(result));
 }
 
-export function calculateRM(carga: number, reps: number): RMResult {
+export function calculateRM(
+  carga: number,
+  reps: number,
+  sexo: SexoRM | string = "masculino",
+): RMResult {
   if (
     !Number.isFinite(carga) ||
     !Number.isFinite(reps) ||
@@ -167,6 +215,12 @@ export function calculateRM(carga: number, reps: number): RMResult {
     carga < 0
   ) {
     return { ...ZERO_RM_RESULT };
+  }
+
+  const normalizedSexo = normalizeSexo(sexo);
+
+  if (normalizedSexo === "femenino") {
+    return calculateRMFemenino(carga, reps);
   }
 
   return {
@@ -185,6 +239,7 @@ export function calculateRMForSession(
   masaCorporal: number,
   ejercicios: SessionExercise[],
   reps: SessionReps[],
+  sexo: SexoRM | string = "masculino",
 ): SessionRMResult[] {
   const safeMasaCorporal = Number.isFinite(masaCorporal) ? masaCorporal : 0;
 
@@ -200,7 +255,7 @@ export function calculateRMForSession(
     const repeticiones = repsMap.get(ejercicio.id) ?? 0;
     const cargaRaw = safeMasaCorporal * ejercicio.porcentajeMasa;
     const carga = roundToTwo(ensureValidNumber(cargaRaw));
-    const rm = calculateRM(carga, repeticiones);
+    const rm = calculateRM(carga, repeticiones, sexo);
 
     return {
       ejercicioId: ejercicio.id,
