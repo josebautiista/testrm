@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Persona {
+  id           Int      @id @default(autoincrement())
+  cc           String   @unique
+  nombre       String
+  sexo         String
+  masaCorporal Float
+  edad         Int
+  talla        Float
+  entrenado    Boolean
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sesiones Sesion[]
+
+  @@index([createdAt])
+}
+
+model Ejercicio {
+  id             Int    @id
+  nombre         String
+  porcentajeMasa Float
+
+  resultados ResultadoEjercicio[]
+
+  @@index([nombre])
+}
+
+model Sesion {
+  id        Int      @id @default(autoincrement())
+  personaId Int
+  createdAt DateTime @default(now())
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  resultados ResultadoEjercicio[]
+
+  @@index([personaId, createdAt])
+}
+
+model ResultadoEjercicio {
+  id           Int   @id @default(autoincrement())
+  sesionId     Int
+  ejercicioId  Int
+  repeticiones Int
+  carga        Float
+
+  epley    Float
+  brzycki  Float
+  lombardi Float
+  lander   Float
+  oconnor  Float
+  mayhew   Float
+  wathen   Float
+  baechle  Float
+
+  createdAt DateTime @default(now())
+
+  sesion    Sesion    @relation(fields: [sesionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ejercicio Ejercicio @relation(fields: [ejercicioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([sesionId, createdAt])
+  @@index([ejercicioId])
+}
+
+model AdminOtp {
+  id        Int      @id @default(autoincrement())
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([code, used, expiresAt])
+  @@index([createdAt])
+}

@@ -1,65 +1,166 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { sendAdminOtp } from "@/app/actions/sendAdminOtp";
+import { verifyAdminOtp } from "@/app/actions/verifyAdminOtp";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { Section } from "@/components/ui/Section";
+import { resolvePersonaEntry, type EntryState } from "@/actions/persona";
+
+const initialState: EntryState = {
+  error: null,
+  redirectTo: null,
+  submittedCC: "",
+};
+
+const sendAdminOtpInitialState = {
+  success: false,
+  sent: false,
+  error: null as string | null,
+};
+
+const verifyAdminOtpInitialState = {
+  success: false,
+  error: null as string | null,
+};
+
+export default function HomePage() {
+  const router = useRouter();
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [state, formAction, isPending] = useActionState(
+    resolvePersonaEntry,
+    initialState,
+  );
+  const [sendState, sendAction, isSendingOtp] = useActionState(
+    sendAdminOtp,
+    sendAdminOtpInitialState,
+  );
+  const [verifyState, verifyAction, isVerifyingOtp] = useActionState(
+    verifyAdminOtp,
+    verifyAdminOtpInitialState,
+  );
+
+  const adminError = useMemo(
+    () => verifyState.error ?? sendState.error,
+    [sendState.error, verifyState.error],
+  );
+
+  useEffect(() => {
+    if (state.redirectTo) {
+      router.push(state.redirectTo);
+    }
+  }, [router, state.redirectTo]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+    <>
+      <main className="flex min-h-[calc(100vh-3rem)] items-center justify-center">
+        <div className="w-full max-w-sm space-y-8">
+          <header className="space-y-2">
+            <h1 className="text-xl font-semibold tracking-tight text-white">
+              Ingreso
+            </h1>
+            <p className="text-sm text-text-secondary">
+              Escribe tu CC para continuar.
+            </p>
+          </header>
+
+          <form action={formAction} className="space-y-8">
+            <Section title="Identificacion">
+              <label htmlFor="cc" className="sr-only">
+                Numero de identificacion
+              </label>
+              <input
+                id="cc"
+                name="cc"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                defaultValue={state.submittedCC}
+                className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-3xl font-semibold tracking-tight text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
+                placeholder="CC"
+                required
+              />
+
+              {state.error ? (
+                <p className="mt-3 text-sm text-text-secondary">
+                  {state.error}
+                </p>
+              ) : null}
+            </Section>
+
+            <PrimaryButton type="submit" disabled={isPending}>
+              {isPending ? "Validando" : "Continuar"}
+            </PrimaryButton>
+          </form>
         </div>
       </main>
-    </div>
+
+      <button
+        type="button"
+        aria-label="Abrir acceso admin"
+        onClick={() => setIsAdminModalOpen(true)}
+        className="fixed bottom-3 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-red-500/80 opacity-80"
+      />
+
+      {isAdminModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-white/6 bg-bg-main p-5">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-base font-semibold tracking-tight text-white">
+                Admin access
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsAdminModalOpen(false)}
+                className="text-sm text-text-secondary"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            {!sendState.sent ? (
+              <form action={sendAction} className="space-y-4">
+                <p className="text-sm text-text-secondary">
+                  Solicita un codigo temporal para acceso admin.
+                </p>
+                <PrimaryButton type="submit" disabled={isSendingOtp}>
+                  {isSendingOtp ? "Enviando" : "Enviar OTP"}
+                </PrimaryButton>
+              </form>
+            ) : (
+              <form action={verifyAction} className="space-y-4">
+                <label
+                  htmlFor="admin-code"
+                  className="block text-sm uppercase tracking-wide text-text-secondary"
+                >
+                  Enter code
+                </label>
+                <input
+                  id="admin-code"
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-center text-3xl font-semibold tracking-[0.45em] text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
+                  placeholder="000000"
+                  required
+                />
+                <PrimaryButton type="submit" disabled={isVerifyingOtp}>
+                  {isVerifyingOtp ? "Verificando" : "Verify"}
+                </PrimaryButton>
+              </form>
+            )}
+
+            {adminError ? (
+              <p className="mt-3 text-sm text-text-secondary">{adminError}</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

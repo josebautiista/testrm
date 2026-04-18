@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
+const extraAllowedOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "")
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean);
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  allowedDevOrigins: ["localhost", "127.0.0.1", ...extraAllowedOrigins],
 };
 
 export default nextConfig;
