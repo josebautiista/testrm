@@ -10,6 +10,8 @@ CREATE TABLE `Persona` (
     `entrenado` BOOLEAN NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `cintura` DOUBLE NULL,
+    `cadera` DOUBLE NULL,
 
     UNIQUE INDEX `Persona_cc_key`(`cc`),
     INDEX `Persona_createdAt_idx`(`createdAt`),
@@ -31,7 +33,10 @@ CREATE TABLE `Sesion` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `personaId` INTEGER NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `requestId` VARCHAR(191) NULL,
+    `peso` DOUBLE NULL,
 
+    UNIQUE INDEX `Sesion_requestId_key`(`requestId`),
     INDEX `Sesion_personaId_createdAt_idx`(`personaId`, `createdAt`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -52,9 +57,37 @@ CREATE TABLE `ResultadoEjercicio` (
     `wathen` DOUBLE NOT NULL,
     `baechle` DOUBLE NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `casas` DOUBLE NULL,
+    `nacleiro` DOUBLE NULL,
 
     INDEX `ResultadoEjercicio_sesionId_createdAt_idx`(`sesionId`, `createdAt`),
     INDEX `ResultadoEjercicio_ejercicioId_idx`(`ejercicioId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `AdminOtp` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `code` VARCHAR(191) NOT NULL,
+    `expiresAt` DATETIME(3) NOT NULL,
+    `used` BOOLEAN NOT NULL DEFAULT false,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `requestId` VARCHAR(191) NULL,
+
+    UNIQUE INDEX `AdminOtp_requestId_key`(`requestId`),
+    INDEX `AdminOtp_code_used_expiresAt_idx`(`code`, `used`, `expiresAt`),
+    INDEX `AdminOtp_createdAt_idx`(`createdAt`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `User` (
+    `id` VARCHAR(191) NOT NULL,
+    `username` VARCHAR(191) NOT NULL,
+    `password` VARCHAR(191) NOT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    UNIQUE INDEX `User_username_key`(`username`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -62,7 +95,7 @@ CREATE TABLE `ResultadoEjercicio` (
 ALTER TABLE `Sesion` ADD CONSTRAINT `Sesion_personaId_fkey` FOREIGN KEY (`personaId`) REFERENCES `Persona`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `ResultadoEjercicio` ADD CONSTRAINT `ResultadoEjercicio_sesionId_fkey` FOREIGN KEY (`sesionId`) REFERENCES `Sesion`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `ResultadoEjercicio` ADD CONSTRAINT `ResultadoEjercicio_ejercicioId_fkey` FOREIGN KEY (`ejercicioId`) REFERENCES `Ejercicio`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `ResultadoEjercicio` ADD CONSTRAINT `ResultadoEjercicio_ejercicioId_fkey` FOREIGN KEY (`ejercicioId`) REFERENCES `Ejercicio`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `ResultadoEjercicio` ADD CONSTRAINT `ResultadoEjercicio_sesionId_fkey` FOREIGN KEY (`sesionId`) REFERENCES `Sesion`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
