@@ -1,0 +1,22 @@
+objetivos: 
+1. unidades de medidas (talla m, peso kg,) ✅
+1.1 condicionar % de masa de acuerdo al sexo ✅
+2. calcular el imc de la persona ✅
+3. calcular el icc de la persona (cm) ✅
+4. indicadores -> instrucciones 
+5. tests de casa y nacleiro 
+7. traducción ingles, portugués y español
+
+vistas: 
+1. cédula del usuario con mensaje de bienvenida + cambio de idioma + cambio de tema
+2. datos del usurio + progreso + sesiones + boteones nuevas sesio, cambiar de usuario + botón calcular ICC
+3. modal calcular ICC
+4. resultados del test por sesión
+5. registrar sesión 
+
+base de datos:
+1. % de masa para muj. homb. en la tabla ejercicico ✅
+2. IMC en la tabla persona ✅
+3. icc en la tabla persona ✅
+4. agregar test de casas y nacleiro ✅
+

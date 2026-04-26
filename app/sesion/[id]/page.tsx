@@ -111,11 +111,12 @@ export default async function SesionDetailPage({
   return (
     <main className="space-y-8 pb-10">
       <header className="space-y-2">
-        <h1 className="text-xl font-semibold tracking-tight text-white">
+        <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
           Detalle de sesion
         </h1>
         <p className="text-sm text-text-secondary">
           {formatSessionDate(sesion.createdAt)}
+          {sesion.peso ? ` · Peso: ${formatNumber(sesion.peso)} kg` : null}
         </p>
       </header>
 
@@ -131,10 +132,10 @@ export default async function SesionDetailPage({
             return (
               <article
                 key={resultado.id}
-                className="space-y-4 rounded-xl border border-white/6 bg-bg-soft p-4"
+                className="space-y-4 rounded-xl border border-gray-200 bg-bg-soft p-4 dark:border-white/6"
               >
                 <header className="space-y-1">
-                  <h2 className="text-base text-white">
+                  <h2 className="text-base text-text-primary dark:text-white">
                     {resultado.ejercicio.nombre}
                   </h2>
                   <p className="text-sm text-text-secondary">
@@ -204,7 +205,10 @@ export default async function SesionDetailPage({
 
       <div className="space-y-4">
         <PrimaryButton href={dashboardHref}>Volver al dashboard</PrimaryButton>
-        <PrimaryButton href="/" className="bg-bg-main text-text-secondary">
+        <PrimaryButton
+          href="/"
+          className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
+        >
           Cambiar usuario
         </PrimaryButton>
       </div>

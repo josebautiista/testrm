@@ -6,7 +6,12 @@ const extraAllowedOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "")
   .filter(Boolean);
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["localhost", "127.0.0.1", ...extraAllowedOrigins],
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    "192.168.1.12",
+    ...extraAllowedOrigins,
+  ],
 };
 
 export default nextConfig;

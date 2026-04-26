@@ -1,13 +1,25 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  --bg-main: #ffffff;
+  --bg-soft: #f8fafc;
+  --bg-subtle: #eef2f7;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #64748b;
+  --accent: #22c55e;
+  --border-subtle: rgba(15, 23, 42, 0.12);
+}
+
+.dark {
   --bg-main: #0a0a0b;
   --bg-soft: #111113;
   --bg-subtle: #161618;
   --text-primary: #ffffff;
   --text-secondary: #a1a1aa;
   --text-tertiary: #6b7280;
-  --accent: #22c55e;
   --border-subtle: rgba(255, 255, 255, 0.06);
 }
 
@@ -19,12 +31,11 @@
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
   --color-accent: var(--accent);
+  --color-border-subtle: var(--border-subtle);
   --font-sans: var(--font-inter);
 }
 
 body {
-  background: var(--bg-main);
-  color: var(--text-primary);
   font-family: var(--font-inter), sans-serif;
 }
 
@@ -59,7 +70,7 @@ input[type="reset"] {
 }
 
 * {
-  scrollbar-color: #2a2a2f #111113;
+  scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
 *::-webkit-scrollbar {
@@ -68,28 +79,58 @@ input[type="reset"] {
 }
 
 *::-webkit-scrollbar-track {
-  background: #111113;
+  background: #f1f5f9;
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 2px solid #111113;
+  border: 2px solid #f1f5f9;
   border-radius: 9999px;
-  background: #2a2a2f;
+  background: #cbd5e1;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #3a3a42;
+  background: #94a3b8;
 }
 
 .modal-scroll {
-  scrollbar-color: #35353d #0a0a0b;
+  scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
 .modal-scroll::-webkit-scrollbar-track {
-  background: #0a0a0b;
+  background: #f1f5f9;
 }
 
 .modal-scroll::-webkit-scrollbar-thumb {
+  border-color: #f1f5f9;
+  background: #cbd5e1;
+}
+
+.dark * {
+  scrollbar-color: #2a2a2f #111113;
+}
+
+.dark *::-webkit-scrollbar-track {
+  background: #111113;
+}
+
+.dark *::-webkit-scrollbar-thumb {
+  border: 2px solid #111113;
+  background: #2a2a2f;
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: #3a3a42;
+}
+
+.dark .modal-scroll {
+  scrollbar-color: #35353d #0a0a0b;
+}
+
+.dark .modal-scroll::-webkit-scrollbar-track {
+  background: #0a0a0b;
+}
+
+.dark .modal-scroll::-webkit-scrollbar-thumb {
   border-color: #0a0a0b;
   background: #35353d;
 }

@@ -37,7 +37,7 @@ export default function RegistroPage({
     <main className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-2xl items-center justify-center py-6">
       <div className="w-full space-y-8">
         <header className="space-y-2">
-          <h1 className="text-xl font-semibold tracking-tight text-white">
+          <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
             Registro de usuario
           </h1>
           <p className="text-sm text-text-secondary">
@@ -54,7 +54,7 @@ export default function RegistroPage({
               defaultValue={cc}
               readOnly={Boolean(cc)}
               inputMode="numeric"
-              className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-3xl font-semibold tracking-tight text-white outline-none placeholder:text-text-tertiary read-only:cursor-default read-only:opacity-80"
+              className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-3xl font-semibold tracking-tight text-text-primary outline-none placeholder:text-text-tertiary read-only:cursor-default read-only:opacity-80 dark:border-white/6 dark:text-white"
               required
             />
           </Section>
@@ -65,7 +65,7 @@ export default function RegistroPage({
                 id="nombre"
                 name="nombre"
                 type="text"
-                className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-base text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
+                className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
                 required
               />
             </Section>
@@ -74,7 +74,7 @@ export default function RegistroPage({
               <select
                 id="sexo"
                 name="sexo"
-                className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-base text-white outline-none focus:border-white/15"
+                className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-base text-text-primary outline-none focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
                 required
                 defaultValue=""
               >
@@ -86,7 +86,11 @@ export default function RegistroPage({
               </select>
             </Section>
 
-            <Section title="Masa corporal" className="space-y-2">
+            <Section
+              title="Masa corporal"
+              hint="Ingresa kg o libras. Si el valor es mayor que 150, se interpreta como libras."
+              className="space-y-2"
+            >
               <input
                 id="masaCorporal"
                 name="masaCorporal"
@@ -94,7 +98,7 @@ export default function RegistroPage({
                 step="0.01"
                 min="0"
                 inputMode="decimal"
-                className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-base text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
+                className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
                 required
               />
             </Section>
@@ -106,12 +110,16 @@ export default function RegistroPage({
                 type="number"
                 min="1"
                 inputMode="numeric"
-                className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-base text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
+                className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
                 required
               />
             </Section>
 
-            <Section title="Talla" className="space-y-2">
+            <Section
+              title="Talla"
+              hint="Ingresa metros o centimetros. Si el valor es mayor que 3, se interpreta como centimetros."
+              className="space-y-2"
+            >
               <input
                 id="talla"
                 name="talla"
@@ -119,19 +127,19 @@ export default function RegistroPage({
                 step="0.01"
                 min="0"
                 inputMode="decimal"
-                className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-base text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
+                className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
                 required
               />
             </Section>
 
             <div className="sm:col-span-2">
-              <label className="flex items-start gap-3 rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-sm text-text-secondary">
+              <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-sm text-text-secondary dark:border-white/6">
                 <input
                   id="entrenado"
                   name="entrenado"
                   type="checkbox"
                   value="true"
-                  className="mt-1 h-4 w-4 rounded border-white/10 bg-bg-main"
+                  className="mt-1 h-4 w-4 rounded border-gray-300 bg-bg-main dark:border-white/10"
                 />
                 <span>He entrenado por al menos 2 meses</span>
               </label>

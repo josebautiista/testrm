@@ -1,98 +1,121 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@prisma/client";
+import Link from "next/link";
 
-import AdminPanel from "./AdminPanel";
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-function createPrismaClient() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not configured");
-  }
-
-  const adapter = new PrismaMariaDb(databaseUrl);
-  return new PrismaClient({ adapter });
-}
-
-const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+import { Card } from "@/components/admin/Card";
+import { StatCard } from "@/components/admin/StatCard";
+import { Table } from "@/components/admin/Table";
+import { formatDateTime } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
 
 export default async function AdminPage() {
-  const cookieStore = await cookies();
-  const isAdmin = cookieStore.get("admin_session");
-
-  if (!isAdmin) {
-    redirect("/");
-  }
-
-  const personas = await prisma.persona.findMany({
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      nombre: true,
-      cc: true,
-      edad: true,
-      sesiones: {
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          createdAt: true,
-          resultados: {
-            orderBy: { ejercicioId: "asc" },
-            select: {
-              id: true,
-              repeticiones: true,
-              carga: true,
-              epley: true,
-              brzycki: true,
-              lombardi: true,
-              lander: true,
-              oconnor: true,
-              mayhew: true,
-              wathen: true,
-              baechle: true,
-              ejercicio: {
-                select: {
-                  nombre: true,
-                },
-              },
-            },
+  const [
+    totalPersonas,
+    totalSesiones,
+    totalEjercicios,
+    totalResultados,
+    latestPersonas,
+    latestSesiones,
+  ] = await prisma.$transaction([
+    prisma.persona.count(),
+    prisma.sesion.count(),
+    prisma.ejercicio.count(),
+    prisma.resultadoEjercicio.count(),
+    prisma.persona.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      include: {
+        sesiones: true,
+      },
+    }),
+    prisma.sesion.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      include: {
+        persona: true,
+        resultados: {
+          include: {
+            ejercicio: true,
           },
         },
       },
-    },
-  });
+    }),
+  ]);
 
-  const personaView = personas.map((persona) => ({
-    id: persona.id,
-    nombre: persona.nombre,
-    cc: persona.cc,
-    edad: persona.edad,
-    sesiones: persona.sesiones.map((sesion) => ({
-      id: sesion.id,
-      createdAt: sesion.createdAt.toISOString(),
-      resultados: sesion.resultados.map((resultado) => ({
-        id: resultado.id,
-        ejercicio: resultado.ejercicio.nombre,
-        repeticiones: resultado.repeticiones,
-        carga: resultado.carga,
-        epley: resultado.epley,
-        brzycki: resultado.brzycki,
-        lombardi: resultado.lombardi,
-        lander: resultado.lander,
-        oconnor: resultado.oconnor,
-        mayhew: resultado.mayhew,
-        wathen: resultado.wathen,
-        baechle: resultado.baechle,
-      })),
-    })),
-  }));
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Total personas" value={totalPersonas} />
+        <StatCard label="Total sesiones" value={totalSesiones} />
+        <StatCard label="Total ejercicios" value={totalEjercicios} />
+        <StatCard label="Total resultados" value={totalResultados} />
+      </div>
 
-  return <AdminPanel personas={personaView} />;
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card
+          title="Ultimas personas"
+          actions={
+            <Link
+              href="/admin/personas"
+              className="text-sm text-text-secondary underline-offset-4 hover:underline"
+            >
+              Ver todas
+            </Link>
+          }
+        >
+          <Table
+            headers={["Nombre", "CC", "Sexo", "Sesiones"]}
+            hasRows={latestPersonas.length > 0}
+          >
+            {latestPersonas.map((persona) => (
+              <tr key={persona.id}>
+                <td className="px-4 py-3 text-text-primary dark:text-white">
+                  {persona.nombre}
+                </td>
+                <td className="px-4 py-3 text-text-secondary">{persona.cc}</td>
+                <td className="px-4 py-3 text-text-secondary">
+                  {persona.sexo}
+                </td>
+                <td className="px-4 py-3 text-text-secondary">
+                  {persona.sesiones.length}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+
+        <Card
+          title="Ultimas sesiones"
+          actions={
+            <Link
+              href="/admin/sesiones"
+              className="text-sm text-text-secondary underline-offset-4 hover:underline"
+            >
+              Ver todas
+            </Link>
+          }
+        >
+          <Table
+            headers={["Sesion", "Persona", "Fecha", "Ejercicios"]}
+            hasRows={latestSesiones.length > 0}
+          >
+            {latestSesiones.map((sesion) => (
+              <tr key={sesion.id}>
+                <td className="px-4 py-3 text-text-primary dark:text-white">
+                  #{sesion.id}
+                </td>
+                <td className="px-4 py-3 text-text-secondary">
+                  {sesion.persona.nombre}
+                </td>
+                <td className="px-4 py-3 text-text-secondary">
+                  {formatDateTime(sesion.createdAt)}
+                </td>
+                <td className="px-4 py-3 text-text-secondary">
+                  {sesion.resultados.length}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+      </div>
+    </div>
+  );
 }

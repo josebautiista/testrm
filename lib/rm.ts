@@ -1,3 +1,5 @@
+import { getPorcentajeMasa } from "@/helpers/calculations";
+
 export type RMResult = {
   epley: number;
   brzycki: number;
@@ -13,7 +15,8 @@ export type SexoRM = "masculino" | "femenino";
 
 type SessionExercise = {
   id: number;
-  porcentajeMasa: number;
+  porcentajeMasaHombre: number;
+  porcentajeMasaMujer: number;
 };
 
 type SessionReps = {
@@ -98,14 +101,16 @@ function calculateRMFemenino(carga: number, reps: number): RMResult {
   );
   const oconnor = roundToTwo(ensureValidNumber(0.025 * reps * carga + carga));
   const mayhew = roundToTwo(
-    ensureValidNumber(safeDivide(100 * carga, 52.2 + 41.9 * Math.exp(-0.055 * reps))),
+    ensureValidNumber(
+      safeDivide(100 * carga, 52.2 + 41.9 * Math.exp(-0.055 * reps)),
+    ),
   );
   const wathen = roundToTwo(
-    ensureValidNumber(safeDivide(100 * carga, 48.8 + 53.8 * Math.exp(-0.075 * reps))),
+    ensureValidNumber(
+      safeDivide(100 * carga, 48.8 + 53.8 * Math.exp(-0.075 * reps)),
+    ),
   );
-  const baechle = roundToTwo(
-    ensureValidNumber(carga * (1 + 0.033 * reps)),
-  );
+  const baechle = roundToTwo(ensureValidNumber(carga * (1 + 0.033 * reps)));
 
   return {
     epley,
@@ -253,7 +258,7 @@ export function calculateRMForSession(
 
   return ejercicios.map((ejercicio) => {
     const repeticiones = repsMap.get(ejercicio.id) ?? 0;
-    const cargaRaw = safeMasaCorporal * ejercicio.porcentajeMasa;
+    const cargaRaw = safeMasaCorporal * getPorcentajeMasa({ sexo }, ejercicio);
     const carga = roundToTwo(ensureValidNumber(cargaRaw));
     const rm = calculateRM(carga, repeticiones, sexo);
 

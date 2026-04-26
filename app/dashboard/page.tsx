@@ -2,11 +2,14 @@ import { redirect } from "next/navigation";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
+import { ICCSection } from "@/components/dashboard/ICCSection";
+import { IMCCard } from "@/components/dashboard/IMCCard";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
 import { ListItem } from "@/components/ui/ListItem";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
+import { calculateIMC, getIMCClassification } from "@/helpers/calculations";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -121,6 +124,8 @@ export default async function DashboardPage({
       cc: true,
       masaCorporal: true,
       talla: true,
+      cintura: true,
+      cadera: true,
     },
   });
 
@@ -151,17 +156,21 @@ export default async function DashboardPage({
 
   const progress = getProgressSummary(sesiones);
   const latestSession = sesiones[0];
+  const imc = calculateIMC(persona);
+  const imcClassification = getIMCClassification(imc);
 
   return (
     <main className="space-y-8 pb-20">
       <header className="space-y-4">
-        <h1 className="text-xl font-semibold tracking-tight text-white">Hoy</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+          Hoy
+        </h1>
         <p className="text-sm text-text-secondary">
           {latestSession
             ? `Ultima sesion: ${formatDaysAgo(latestSession.createdAt)}`
             : "Ultima sesion: sin registros"}
         </p>
-        <div className="grid grid-cols-1 gap-1 rounded-xl border border-white/6 bg-bg-soft px-4 py-3 sm:grid-cols-3 sm:gap-4">
+        <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 sm:grid-cols-3 sm:gap-4 dark:border-white/6">
           <MetricRow label="Identificacion" value={persona.cc} compact />
           <MetricRow
             label="Peso"
@@ -176,13 +185,17 @@ export default async function DashboardPage({
         </div>
       </header>
 
+      <IMCCard imc={imc} classification={imcClassification} />
+
+      <ICCSection cc={cc} cintura={persona.cintura} cadera={persona.cadera} />
+
       <Section title="Progreso inteligente">
         {progress.length === 0 ? (
           <p className="text-base text-text-secondary">
             Registra al menos dos sesiones para comparar avance.
           </p>
         ) : (
-          <div className="divide-y divide-white/6">
+          <div className="divide-y divide-gray-200 dark:divide-white/6">
             {progress.slice(0, 6).map((item) => (
               <MetricRow
                 key={item.nombre}
@@ -221,7 +234,10 @@ export default async function DashboardPage({
         </PrimaryButton>
       </div>
 
-      <PrimaryButton href="/" className="bg-bg-main text-text-secondary">
+      <PrimaryButton
+        href="/"
+        className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
+      >
         Cambiar usuario
       </PrimaryButton>
 

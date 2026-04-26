@@ -8,7 +8,7 @@ type PrimaryButtonProps = {
 } & ButtonHTMLAttributes<HTMLButtonElement>;
 
 const baseClassName =
-  "inline-flex w-full items-center justify-center rounded-xl border border-white/6 bg-bg-soft px-4 py-3 text-base font-medium tracking-tight text-white transition duration-200 active:bg-bg-subtle disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 text-base font-medium tracking-tight text-text-primary shadow-sm transition duration-200 active:bg-bg-subtle disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/6 dark:text-white dark:shadow-none";
 
 export function PrimaryButton({
   children,

@@ -9,7 +9,7 @@ type MetricRowProps = {
 
 const toneClass: Record<MetricRowTone, string> = {
   positive: "text-accent",
-  neutral: "text-white",
+  neutral: "text-text-primary dark:text-white",
   negative: "text-text-secondary",
 };
 

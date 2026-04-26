@@ -15,9 +15,9 @@ export function ListItem({
   withDivider = true,
 }: ListItemProps) {
   const className = [
-    "flex w-full items-center justify-between gap-3 py-3 text-left text-base text-white transition duration-200",
+    "flex w-full items-center justify-between gap-3 py-3 text-left text-base text-text-primary transition duration-200 dark:text-white",
     "active:bg-bg-subtle",
-    withDivider ? "border-b border-white/6" : "",
+    withDivider ? "border-b border-gray-200 dark:border-white/6" : "",
   ]
     .filter(Boolean)
     .join(" ");

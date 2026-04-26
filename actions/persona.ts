@@ -2,7 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+
+import { createPersona as createPersonaService } from "@/services/persona.service";
 
 export type EntryState = {
   error: string | null;
@@ -24,10 +26,6 @@ type CreatePersonaInput = {
   talla: number;
   entrenado: boolean;
 };
-
-type CreatePersonaResult =
-  | { ok: true; cc: string }
-  | { ok: false; error: string };
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -63,12 +61,17 @@ function getString(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function validateCreatePersonaInput(
-  input: CreatePersonaInput,
+function parseCreatePersonaInput(
+  formData: FormData,
 ): { ok: true; data: CreatePersonaInput } | { ok: false; error: string } {
-  const cc = normalizeCC(input.cc);
-  const nombre = input.nombre.trim();
-  const sexo = input.sexo.toLowerCase();
+  const cc = normalizeCC(getString(formData.get("cc")));
+  const nombre = getString(formData.get("nombre"));
+  const sexo = getString(formData.get("sexo"));
+  const masaCorporal = toFiniteNumber(formData.get("masaCorporal"));
+  const edad = toFiniteNumber(formData.get("edad"));
+  const talla = toFiniteNumber(formData.get("talla"));
+  const entrenado =
+    formData.get("entrenado") === "on" || formData.get("entrenado") === "true";
 
   if (!cc) {
     return { ok: false, error: "El CC es obligatorio." };
@@ -82,58 +85,18 @@ function validateCreatePersonaInput(
     return { ok: false, error: "El sexo es obligatorio." };
   }
 
-  if (sexo !== "masculino" && sexo !== "femenino") {
-    return { ok: false, error: "El sexo debe ser Masculino o Femenino." };
-  }
-
-  if (!Number.isFinite(input.masaCorporal) || input.masaCorporal <= 0) {
-    return { ok: false, error: "La masa corporal debe ser un numero valido." };
-  }
-
-  if (
-    !Number.isFinite(input.edad) ||
-    !Number.isInteger(input.edad) ||
-    input.edad <= 0
-  ) {
-    return { ok: false, error: "La edad debe ser un entero positivo." };
-  }
-
-  if (!Number.isFinite(input.talla) || input.talla <= 0) {
-    return { ok: false, error: "La talla debe ser un numero valido." };
-  }
-
   return {
     ok: true,
     data: {
-      ...input,
       cc,
       nombre,
       sexo,
+      masaCorporal,
+      edad,
+      talla,
+      entrenado,
     },
   };
-}
-
-function parseCreatePersonaInput(
-  formData: FormData,
-): { ok: true; data: CreatePersonaInput } | { ok: false; error: string } {
-  const cc = normalizeCC(getString(formData.get("cc")));
-  const nombre = getString(formData.get("nombre"));
-  const sexo = getString(formData.get("sexo"));
-  const masaCorporal = toFiniteNumber(formData.get("masaCorporal"));
-  const edad = toFiniteNumber(formData.get("edad"));
-  const talla = toFiniteNumber(formData.get("talla"));
-  const entrenado =
-    formData.get("entrenado") === "on" || formData.get("entrenado") === "true";
-
-  return validateCreatePersonaInput({
-    cc,
-    nombre,
-    sexo,
-    masaCorporal,
-    edad,
-    talla,
-    entrenado,
-  });
 }
 
 export async function checkPersonaByCC(cc: string) {
@@ -193,42 +156,18 @@ export async function getSessionDatesByCC(cc: string) {
 
 export async function createPersona(
   data: CreatePersonaInput,
-): Promise<CreatePersonaResult> {
-  const validated = validateCreatePersonaInput(data);
-
-  if (!validated.ok) {
-    return { ok: false, error: validated.error };
-  }
-
-  const existingPersona = await prisma.persona.findUnique({
-    where: { cc: validated.data.cc },
-    select: { id: true },
-  });
-
-  if (existingPersona) {
-    return { ok: false, error: "Ya existe un usuario con ese CC." };
-  }
-
+): Promise<{ ok: true; cc: string } | { ok: false; error: string }> {
   try {
-    const persona = await prisma.persona.create({
-      data: validated.data,
-      select: {
-        cc: true,
-      },
-    });
+    const persona = await createPersonaService(data);
 
     return { ok: true, cc: persona.cc };
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
-      return { ok: false, error: "Ya existe un usuario con ese CC." };
-    }
-
     return {
       ok: false,
-      error: "No fue posible registrar el usuario. Intenta nuevamente.",
+      error:
+        error instanceof Error
+          ? error.message
+          : "No fue posible registrar el usuario. Intenta nuevamente.",
     };
   }
 }

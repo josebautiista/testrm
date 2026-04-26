@@ -12,6 +12,8 @@ model Persona {
   nombre       String
   sexo         String
   masaCorporal Float
+  cintura      Float?
+  cadera       Float?
   edad         Int
   talla        Float
   entrenado    Boolean
@@ -24,9 +26,10 @@ model Persona {
 }
 
 model Ejercicio {
-  id             Int    @id
-  nombre         String
-  porcentajeMasa Float
+  id                   Int    @id
+  nombre               String
+  porcentajeMasaHombre Float
+  porcentajeMasaMujer  Float
 
   resultados ResultadoEjercicio[]
 
@@ -36,6 +39,7 @@ model Ejercicio {
 model Sesion {
   id        Int      @id @default(autoincrement())
   personaId Int
+  peso      Float?
   requestId String?  @unique
   createdAt DateTime @default(now())
 
@@ -61,6 +65,8 @@ model ResultadoEjercicio {
   mayhew   Float
   wathen   Float
   baechle  Float
+  casas    Float
+  nacleiro Float
 
   createdAt DateTime @default(now())
 
@@ -81,4 +87,11 @@ model AdminOtp {
 
   @@index([code, used, expiresAt])
   @@index([createdAt])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
 }
