@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/Button";
@@ -19,7 +19,7 @@ async function parseError(response: Response) {
   return "No se pudo iniciar sesion.";
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -119,5 +119,26 @@ export default function LoginPage() {
         </form>
       </section>
     </main>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4 py-10">
+      <section className="w-full rounded-2xl border border-gray-200 bg-bg-soft p-6 shadow-sm dark:border-white/8 dark:shadow-none">
+        <h1 className="text-2xl font-semibold tracking-tight text-text-primary dark:text-white">
+          Iniciar sesion
+        </h1>
+        <p className="mt-2 text-sm text-text-secondary">Cargando formulario...</p>
+      </section>
+    </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }
