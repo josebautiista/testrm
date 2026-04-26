@@ -129,7 +129,9 @@ function LoginFallback() {
         <h1 className="text-2xl font-semibold tracking-tight text-text-primary dark:text-white">
           Iniciar sesion
         </h1>
-        <p className="mt-2 text-sm text-text-secondary">Cargando formulario...</p>
+        <p className="mt-2 text-sm text-text-secondary">
+          Cargando formulario...
+        </p>
       </section>
     </main>
   );
