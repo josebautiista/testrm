@@ -12,58 +12,66 @@ model Persona {
   nombre       String
   sexo         String
   masaCorporal Float
+  cintura      Float?
+  cadera       Float?
   edad         Int
   talla        Float
   entrenado    Boolean
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  cintura      Float?
-  cadera       Float?
-  sesiones     Sesion[]
+
+  sesiones Sesion[]
 
   @@index([createdAt])
 }
 
 model Ejercicio {
-  id             Int                  @id
-  nombre         String
-  porcentajeMasa Float
-  resultados     ResultadoEjercicio[]
+  id                   Int    @id
+  nombre               String
+  porcentajeMasaHombre Float
+  porcentajeMasaMujer  Float
+
+  resultados ResultadoEjercicio[]
 
   @@index([nombre])
 }
 
 model Sesion {
-  id         Int                  @id @default(autoincrement())
-  personaId  Int
-  createdAt  DateTime             @default(now())
-  requestId  String?              @unique
-  peso       Float?
+  id        Int      @id @default(autoincrement())
+  personaId Int
+  peso      Float?
+  requestId String?  @unique
+  createdAt DateTime @default(now())
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
   resultados ResultadoEjercicio[]
-  persona    Persona              @relation(fields: [personaId], references: [id], onDelete: Cascade)
 
   @@index([personaId, createdAt])
 }
 
 model ResultadoEjercicio {
-  id           Int       @id @default(autoincrement())
+  id           Int   @id @default(autoincrement())
   sesionId     Int
   ejercicioId  Int
   repeticiones Int
   carga        Float
-  epley        Float
-  brzycki      Float
-  lombardi     Float
-  lander       Float
-  oconnor      Float
-  mayhew       Float
-  wathen       Float
-  baechle      Float
-  createdAt    DateTime  @default(now())
-  casas        Float?
-  nacleiro     Float?
-  ejercicio    Ejercicio @relation(fields: [ejercicioId], references: [id])
-  sesion       Sesion    @relation(fields: [sesionId], references: [id], onDelete: Cascade)
+
+  epley    Float
+  brzycki  Float
+  lombardi Float
+  lander   Float
+  oconnor  Float
+  mayhew   Float
+  wathen   Float
+  baechle  Float
+  casas    Float
+  nacleiro Float
+
+  createdAt DateTime @default(now())
+
+  sesion    Sesion    @relation(fields: [sesionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ejercicio Ejercicio @relation(fields: [ejercicioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([sesionId, createdAt])
   @@index([ejercicioId])
@@ -71,11 +79,11 @@ model ResultadoEjercicio {
 
 model AdminOtp {
   id        Int      @id @default(autoincrement())
+  requestId String?  @unique
   code      String
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
-  requestId String?  @unique
 
   @@index([code, used, expiresAt])
   @@index([createdAt])

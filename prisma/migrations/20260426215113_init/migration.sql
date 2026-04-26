@@ -5,13 +5,13 @@ CREATE TABLE `Persona` (
     `nombre` VARCHAR(191) NOT NULL,
     `sexo` VARCHAR(191) NOT NULL,
     `masaCorporal` DOUBLE NOT NULL,
+    `cintura` DOUBLE NULL,
+    `cadera` DOUBLE NULL,
     `edad` INTEGER NOT NULL,
     `talla` DOUBLE NOT NULL,
     `entrenado` BOOLEAN NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
-    `cintura` DOUBLE NULL,
-    `cadera` DOUBLE NULL,
 
     UNIQUE INDEX `Persona_cc_key`(`cc`),
     INDEX `Persona_createdAt_idx`(`createdAt`),
@@ -22,7 +22,8 @@ CREATE TABLE `Persona` (
 CREATE TABLE `Ejercicio` (
     `id` INTEGER NOT NULL,
     `nombre` VARCHAR(191) NOT NULL,
-    `porcentajeMasa` DOUBLE NOT NULL,
+    `porcentajeMasaHombre` DOUBLE NOT NULL,
+    `porcentajeMasaMujer` DOUBLE NOT NULL,
 
     INDEX `Ejercicio_nombre_idx`(`nombre`),
     PRIMARY KEY (`id`)
@@ -32,9 +33,9 @@ CREATE TABLE `Ejercicio` (
 CREATE TABLE `Sesion` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `personaId` INTEGER NOT NULL,
-    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `requestId` VARCHAR(191) NULL,
     `peso` DOUBLE NULL,
+    `requestId` VARCHAR(191) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     UNIQUE INDEX `Sesion_requestId_key`(`requestId`),
     INDEX `Sesion_personaId_createdAt_idx`(`personaId`, `createdAt`),
@@ -56,9 +57,9 @@ CREATE TABLE `ResultadoEjercicio` (
     `mayhew` DOUBLE NOT NULL,
     `wathen` DOUBLE NOT NULL,
     `baechle` DOUBLE NOT NULL,
+    `casas` DOUBLE NOT NULL,
+    `nacleiro` DOUBLE NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `casas` DOUBLE NULL,
-    `nacleiro` DOUBLE NULL,
 
     INDEX `ResultadoEjercicio_sesionId_createdAt_idx`(`sesionId`, `createdAt`),
     INDEX `ResultadoEjercicio_ejercicioId_idx`(`ejercicioId`),
@@ -68,11 +69,11 @@ CREATE TABLE `ResultadoEjercicio` (
 -- CreateTable
 CREATE TABLE `AdminOtp` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `requestId` VARCHAR(191) NULL,
     `code` VARCHAR(191) NOT NULL,
     `expiresAt` DATETIME(3) NOT NULL,
     `used` BOOLEAN NOT NULL DEFAULT false,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `requestId` VARCHAR(191) NULL,
 
     UNIQUE INDEX `AdminOtp_requestId_key`(`requestId`),
     INDEX `AdminOtp_code_used_expiresAt_idx`(`code`, `used`, `expiresAt`),
@@ -95,7 +96,7 @@ CREATE TABLE `User` (
 ALTER TABLE `Sesion` ADD CONSTRAINT `Sesion_personaId_fkey` FOREIGN KEY (`personaId`) REFERENCES `Persona`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `ResultadoEjercicio` ADD CONSTRAINT `ResultadoEjercicio_ejercicioId_fkey` FOREIGN KEY (`ejercicioId`) REFERENCES `Ejercicio`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `ResultadoEjercicio` ADD CONSTRAINT `ResultadoEjercicio_sesionId_fkey` FOREIGN KEY (`sesionId`) REFERENCES `Sesion`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `ResultadoEjercicio` ADD CONSTRAINT `ResultadoEjercicio_sesionId_fkey` FOREIGN KEY (`sesionId`) REFERENCES `Sesion`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `ResultadoEjercicio` ADD CONSTRAINT `ResultadoEjercicio_ejercicioId_fkey` FOREIGN KEY (`ejercicioId`) REFERENCES `Ejercicio`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

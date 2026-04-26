@@ -15,39 +15,39 @@ const DEFAULT_ADMIN_PASSWORD = "admin1234";
 const ejercicios = [
   {
     id: 1,
-    nombre: "curl de biceps",
+    nombre: "Curl de biceps",
     porcentajeMasaHombre: 0.35,
-    porcentajeMasaMujer: 0.35,
+    porcentajeMasaMujer: 0.18,
   },
   {
     id: 2,
-    nombre: "press de pierna",
+    nombre: "Press de pierna",
     porcentajeMasaHombre: 0.65,
-    porcentajeMasaMujer: 0.65,
+    porcentajeMasaMujer: 0.5,
   },
   {
     id: 3,
-    nombre: "polea alta",
+    nombre: "Polea alta",
     porcentajeMasaHombre: 0.7,
-    porcentajeMasaMujer: 0.7,
+    porcentajeMasaMujer: 0.45,
   },
   {
     id: 4,
-    nombre: "abdominales (1 minuto)",
+    nombre: "Abdominales (1 minuto)",
     porcentajeMasaHombre: 0.49,
     porcentajeMasaMujer: 0.49,
   },
   {
     id: 5,
-    nombre: "press pecho",
+    nombre: "Press pecho",
     porcentajeMasaHombre: 0.75,
-    porcentajeMasaMujer: 0.75,
+    porcentajeMasaMujer: 0.45,
   },
   {
     id: 6,
-    nombre: "curl biceps femoral",
+    nombre: "Curl biceps femoral",
     porcentajeMasaHombre: 0.32,
-    porcentajeMasaMujer: 0.32,
+    porcentajeMasaMujer: 0.25,
   },
 ] as const;
 
