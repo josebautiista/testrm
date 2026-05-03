@@ -62,11 +62,12 @@ export async function POST(request: Request) {
       select: {
         cintura: true,
         cadera: true,
+        sexo: true,
       },
     });
 
     const icc = calculateICC(persona.cintura ?? 0, persona.cadera ?? 0);
-    const classification = getICCClassification(icc);
+    const classification = getICCClassification(icc, persona.sexo);
 
     return NextResponse.json({
       icc,

@@ -87,7 +87,7 @@ export default function RegistroPage({
             </Section>
 
             <Section
-              title="Masa corporal"
+              title="Masa corporal (peso)"
               hint="Ingresa kg o libras. Si el valor es mayor que 150, se interpreta como libras."
               className="space-y-2"
             >

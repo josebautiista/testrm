@@ -1,22 +1,41 @@
-objetivos: 
-1. unidades de medidas (talla m, peso kg,) ✅
-1.1 condicionar % de masa de acuerdo al sexo ✅
-2. calcular el imc de la persona ✅
-3. calcular el icc de la persona (cm) ✅
-4. indicadores -> instrucciones 
-5. tests de casa y nacleiro 
-7. traducción ingles, portugués y español
-
-vistas: 
-1. cédula del usuario con mensaje de bienvenida + cambio de idioma + cambio de tema
-2. datos del usurio + progreso + sesiones + boteones nuevas sesio, cambiar de usuario + botón calcular ICC
-3. modal calcular ICC
-4. resultados del test por sesión
-5. registrar sesión 
-
-base de datos:
-1. % de masa para muj. homb. en la tabla ejercicico ✅
-2. IMC en la tabla persona ✅
-3. icc en la tabla persona ✅
-4. agregar test de casas y nacleiro ✅
-
+🔹 BLOQUE 1: FUNDAMENTOS Y PROPÓSITO DE LA APP
+Explicar claramente qué es el RM (1RM), para qué sirve y qué se puede hacer con él.
+Incluir una introducción clara de la app y su propósito desde el inicio.
+🔹 BLOQUE 2: GUÍA Y FLUJO DEL USUARIO (UX CORE)
+Guiar al usuario en cada pantalla indicando exactamente qué debe hacer (tipo joyride).
+Mostrar desde el inicio un llamado a la acción claro (ej. “Nueva sesión”).
+Incluir una pregunta inicial para adaptar la experiencia (ej. si ha entrenado al menos dos meses).
+Redirigir automáticamente al usuario a los resultados después de guardar una sesión.
+Dar retroalimentación inmediata al usuario al completar acciones.
+🔹 BLOQUE 3: LENGUAJE, CLARIDAD Y COMPRENSIÓN
+Mejorar los textos técnicos para que sean comprensibles (ej. “peso sugerido”).
+Clarificar nombres de ejercicios.
+Incluir indicadores de fuerza comprensibles para el usuario.
+🔹 BLOQUE 4: INPUTS Y ESTANDARIZACIÓN DE DATOS
+Mejorar la forma de ingresar datos (inputs claros, sin confusión, con validaciones).
+Asegurar que todas las unidades estén claras y estandarizadas en kg (incluye RM y registro de peso).
+🔹 BLOQUE 5: RESULTADOS Y APLICACIÓN PRÁCTICA
+Convertir los resultados en recomendaciones prácticas de entrenamiento según objetivos (fuerza, hipertrofia, resistencia).
+Explicar cómo entrenar con porcentajes del RM.
+Incluir links de artículos científicos como respaldo.
+🔹 BLOQUE 6: PERSONALIZACIÓN Y NIVEL DEL USUARIO
+Personalizar la experiencia según nivel del usuario (principiante, intermedio, avanzado).
+Ordenar fórmulas de menor a mayor exigencia.
+Incluir indicador de nivel de entrenamiento según resultados.
+🔹 BLOQUE 7: SESIONES Y SEGUIMIENTO
+Hacer más intuitiva la visualización de sesiones registradas.
+🔹 BLOQUE 8: SALUD – ICC (ÍNDICE CINTURA-CADERA)
+Explicar de forma simple el ICC y su relación con el riesgo cardiovascular.
+Mejorar la guía de medición corporal (especialmente cadera).
+Corregir inconsistencias entre resultados y tablas.
+Integrar referencia OMS:
+Hombres: riesgo alto ≥ 102 cm
+Mujeres: riesgo alto ≥ 88 cm
+🔹 BLOQUE 9: SALUD – IMC
+Incluir tablas de referencia claras para IMC.
+Ampliar rangos de obesidad.
+Integrar indicadores claros para interpretación del IMC.
+🔹 BLOQUE 10: SISTEMA Y CONFIGURACIÓN
+Ajustar y estandarizar el formato de fechas.
+Adaptar hora según el país del navegador.
+Implementar soporte multilenguaje (español, inglés, portugués).

@@ -134,3 +134,38 @@ input[type="reset"] {
   border-color: #0a0a0b;
   background: #35353d;
 }
+
+/* Overrides for driver.js to match app design */
+.driver-highlight {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  border-radius: 1rem;
+  border: 1px solid var(--border-subtle);
+}
+
+.driver-overlay {
+  background: rgba(15, 23, 42, 0.6) !important;
+}
+
+.driver-popover {
+  background: var(--bg-soft) !important;
+  color: var(--text-primary) !important;
+  border-radius: 1rem !important;
+  border: 1px solid var(--border-subtle) !important;
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.12) !important;
+}
+
+.driver-popover .driver-title {
+  font-weight: 600;
+  color: var(--text-primary) !important;
+}
+
+.driver-popover .driver-description {
+  color: var(--text-secondary) !important;
+}
+
+.driver-tooltip .driver-controls .driver-btn {
+  background: var(--bg-soft) !important;
+  color: var(--text-primary) !important;
+  border-radius: 0.75rem !important;
+  border: 1px solid var(--border-subtle) !important;
+}

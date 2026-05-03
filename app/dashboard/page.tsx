@@ -4,11 +4,12 @@ import { PrismaClient } from "@prisma/client";
 
 import { ICCSection } from "@/components/dashboard/ICCSection";
 import { IMCCard } from "@/components/dashboard/IMCCard";
+import { DashboardSessionsSection } from "@/components/dashboard/DashboardSessionsSection";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
-import { ListItem } from "@/components/ui/ListItem";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
+import { DashboardGuide } from "./DashboardGuide";
 import { calculateIMC, getIMCClassification } from "@/helpers/calculations";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
@@ -29,13 +30,11 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-function formatSessionDate(date: Date) {
+function formatSessionCardDate(date: Date) {
   return new Intl.DateTimeFormat("es-ES", {
     day: "numeric",
     month: "long",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
+    year: "numeric",
   }).format(date);
 }
 
@@ -112,6 +111,10 @@ export default async function DashboardPage({
   const resolvedSearchParams = await searchParams;
   const rawCC = resolvedSearchParams.cc;
   const cc = typeof rawCC === "string" ? rawCC.trim() : "";
+  const saved =
+    resolvedSearchParams.saved === "1" ||
+    resolvedSearchParams.saved === "true" ||
+    resolvedSearchParams.saved === "saved";
 
   if (!cc) {
     redirect("/");
@@ -122,6 +125,8 @@ export default async function DashboardPage({
     select: {
       id: true,
       cc: true,
+      nombre: true,
+      sexo: true,
       masaCorporal: true,
       talla: true,
       cintura: true,
@@ -158,20 +163,37 @@ export default async function DashboardPage({
   const latestSession = sesiones[0];
   const imc = calculateIMC(persona);
   const imcClassification = getIMCClassification(imc);
+  const newSessionHref = `/nueva-sesion?cc=${encodeURIComponent(cc)}`;
+  const sessionItems = sesiones.map((sesion, index) => {
+    const exerciseCount = sesion.resultados.length;
+    return {
+      id: sesion.id,
+      href: `/sesion/${sesion.id}?cc=${encodeURIComponent(cc)}`,
+      fecha: formatSessionCardDate(sesion.createdAt),
+      nombre:
+        index === 0
+          ? "Sesión más reciente"
+          : `Sesión ${sesiones.length - index}`,
+      resumen:
+        exerciseCount === 1
+          ? "1 ejercicio registrado"
+          : `${exerciseCount} ejercicios registrados`,
+    };
+  });
 
   return (
     <main className="space-y-8 pb-20">
-      <header className="space-y-4">
+      <header className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
         <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-          Hoy
+          Resumen
         </h1>
         <p className="text-sm text-text-secondary">
           {latestSession
-            ? `Ultima sesion: ${formatDaysAgo(latestSession.createdAt)}`
-            : "Ultima sesion: sin registros"}
+            ? `Última sesión: ${formatDaysAgo(latestSession.createdAt)}`
+            : "Última sesión: sin sesiones"}
         </p>
-        <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 sm:grid-cols-3 sm:gap-4 dark:border-white/6">
-          <MetricRow label="Identificacion" value={persona.cc} compact />
+        <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-200 bg-bg-main px-4 py-3 sm:grid-cols-3 sm:gap-4 dark:border-white/10 dark:bg-bg-soft">
+          <MetricRow label="Identificación" value={persona.cc} compact />
           <MetricRow
             label="Peso"
             value={formatValue(persona.masaCorporal, "kg")}
@@ -187,7 +209,26 @@ export default async function DashboardPage({
 
       <IMCCard imc={imc} classification={imcClassification} />
 
-      <ICCSection cc={cc} cintura={persona.cintura} cadera={persona.cadera} />
+      <ICCSection cc={cc} sexo={persona.sexo as "hombre" | "mujer" | "masculino" | "femenino"} cintura={persona.cintura} cadera={persona.cadera} />
+
+      <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+            Nueva sesión
+          </h2>
+          <p className="text-sm text-text-secondary">
+            Guarda un entrenamiento para actualizar tu historial y revisar tus
+            resultados.
+          </p>
+        </div>
+        <PrimaryButton href={newSessionHref}>Crear nueva sesión</PrimaryButton>
+      </section>
+
+      <DashboardSessionsSection
+        sessions={sessionItems}
+        newSessionHref={newSessionHref}
+        saved={saved}
+      />
 
       <Section title="Progreso inteligente">
         {progress.length === 0 ? (
@@ -208,30 +249,8 @@ export default async function DashboardPage({
         )}
       </Section>
 
-      <Section title="Sesiones">
-        {sesiones.length === 0 ? (
-          <p className="text-base text-text-secondary">
-            Sin sesiones registradas.
-          </p>
-        ) : (
-          <div>
-            {sesiones.map((sesion, index) => (
-              <ListItem
-                key={sesion.id}
-                href={`/sesion/${sesion.id}?cc=${encodeURIComponent(cc)}`}
-                withDivider={index < sesiones.length - 1}
-              >
-                {formatSessionDate(sesion.createdAt)}
-              </ListItem>
-            ))}
-          </div>
-        )}
-      </Section>
-
       <div className="pt-2">
-        <PrimaryButton href={`/nueva-sesion?cc=${encodeURIComponent(cc)}`}>
-          + Nueva sesion
-        </PrimaryButton>
+        <DashboardGuide cc={cc} hasSessions={sesiones.length > 0} />
       </div>
 
       <PrimaryButton
@@ -242,7 +261,7 @@ export default async function DashboardPage({
       </PrimaryButton>
 
       <FloatingActionButton
-        href={`/nueva-sesion?cc=${encodeURIComponent(cc)}`}
+        href={newSessionHref}
         label="+"
       />
     </main>

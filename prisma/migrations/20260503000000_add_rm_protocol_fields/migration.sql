@@ -1,0 +1,6 @@
+ALTER TABLE `Sesion`
+    ADD COLUMN `trainingMonths` INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN `rmMethod` VARCHAR(191) NOT NULL DEFAULT 'estimation',
+    ADD COLUMN `estimatedRM` DOUBLE NULL,
+    ADD COLUMN `finalRM` DOUBLE NULL,
+    ADD COLUMN `protocolData` JSON NULL;

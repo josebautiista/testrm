@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "RM Gym",
-  description: "Registro de sesiones de fuerza",
+  title: "Entrena tu fuerza",
+  description: "Registro simple de sesiones y progreso de fuerza",
 };
 
 export default function RootLayout({

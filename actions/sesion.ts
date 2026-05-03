@@ -4,17 +4,25 @@ import { redirect } from "next/navigation";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { Prisma, PrismaClient } from "@prisma/client";
 
-import { calculateRMForSession, roundToTwo } from "@/lib/rm";
+import { calculateRM, calculateRMForSession, roundToTwo } from "@/lib/rm";
+
+type RMMethod = "estimation" | "casas" | "nacleiro";
 
 type ResultadoInput = {
   ejercicioId: number;
   repeticiones: number;
+  carga: number;
+  casas: number;
+  nacleiro: number;
 };
 
 type CreateSesionInput = {
   cc: string;
   requestId: string;
   peso: number;
+  trainingMonths: number;
+  rmMethod: RMMethod;
+  protocolData: Prisma.InputJsonValue | null;
   ejercicios: ResultadoInput[];
 };
 
@@ -55,12 +63,24 @@ function parseNonNegativeInt(value: FormDataEntryValue | null) {
   }
 
   const parsed = Number(value);
-
   if (!Number.isFinite(parsed)) {
     return 0;
   }
 
   return Math.max(0, Math.floor(parsed));
+}
+
+function parseNonNegativeNumber(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return 0;
+  }
+
+  const parsed = Number(value.replace(",", "."));
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+
+  return Math.max(0, parsed);
 }
 
 function toPositiveInt(value: unknown) {
@@ -74,6 +94,50 @@ function toPositiveInt(value: unknown) {
   }
 
   return rounded;
+}
+
+function parseRMMethod(value: FormDataEntryValue | null, trainingMonths: number): RMMethod {
+  if (trainingMonths < 4) {
+    return "estimation";
+  }
+
+  if (value === "casas" || value === "nacleiro") {
+    return value;
+  }
+
+  return "estimation";
+}
+
+function parseProtocolData(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as Prisma.InputJsonValue;
+  } catch {
+    return null;
+  }
+}
+
+function getFormulaRM(input: ResultadoInput, sexo: string) {
+  const rm = calculateRM(input.carga, input.repeticiones, sexo);
+  return {
+    ...rm,
+    estimated: Math.max(rm.epley, rm.brzycki),
+  };
+}
+
+function getFinalRM(input: ResultadoInput, rmMethod: RMMethod, sexo: string) {
+  if (rmMethod === "casas" && input.casas > 0) {
+    return input.casas;
+  }
+
+  if (rmMethod === "nacleiro" && input.nacleiro > 0) {
+    return input.nacleiro;
+  }
+
+  return getFormulaRM(input, sexo).estimated;
 }
 
 function parseCreateSesionInput(
@@ -91,54 +155,55 @@ function parseCreateSesionInput(
       ? (formData.get("requestId") as string)
       : "",
   );
-
   const rawPeso = formData.get("peso");
   const peso = typeof rawPeso === "string" ? Number(rawPeso.trim()) : NaN;
+  const trainingMonths = parseNonNegativeInt(formData.get("trainingMonths"));
+  const rmMethod = parseRMMethod(formData.get("rmMethod"), trainingMonths);
+  const protocolData = parseProtocolData(formData.get("protocolData"));
 
   if (!cc) {
-    return { ok: false, error: "CC invalido.", cc: "" };
+    return { ok: false, error: "Cédula inválida.", cc: "" };
   }
 
   if (!requestId) {
     return {
       ok: false,
-      error: "No fue posible preparar el envio de la sesion.",
+      error: "No fue posible preparar el envío de la sesión.",
       cc,
     };
   }
 
   if (!Number.isFinite(peso) || peso <= 0) {
-    return { ok: false, error: "Peso invalido.", cc };
+    return { ok: false, error: "Peso inválido.", cc };
   }
 
-  const rawEjercicioIds = formData.getAll("ejercicioIds");
   const resultados: ResultadoInput[] = [];
 
-  for (const rawId of rawEjercicioIds) {
+  for (const rawId of formData.getAll("ejercicioIds")) {
     if (typeof rawId !== "string") {
       continue;
     }
 
     const ejercicioId = Number(rawId);
-
     if (!Number.isInteger(ejercicioId) || ejercicioId <= 0) {
       continue;
     }
 
-    const repeticiones = parseNonNegativeInt(
-      formData.get(`repeticiones_${ejercicioId}`),
-    );
-
     resultados.push({
       ejercicioId,
-      repeticiones,
+      repeticiones: parseNonNegativeInt(
+        formData.get(`repeticiones_${ejercicioId}`),
+      ),
+      carga: parseNonNegativeNumber(formData.get(`carga_${ejercicioId}`)),
+      casas: parseNonNegativeNumber(formData.get(`casas_${ejercicioId}`)),
+      nacleiro: parseNonNegativeNumber(formData.get(`nacleiro_${ejercicioId}`)),
     });
   }
 
   if (resultados.length === 0) {
     return {
       ok: false,
-      error: "No se encontraron ejercicios validos para registrar.",
+      error: "No se encontraron ejercicios válidos para registrar.",
       cc,
     };
   }
@@ -149,6 +214,9 @@ function parseCreateSesionInput(
       cc,
       requestId,
       peso,
+      trainingMonths,
+      rmMethod,
+      protocolData,
       ejercicios: resultados,
     },
   };
@@ -167,8 +235,6 @@ function sanitizeInputEjercicios(ejercicios: unknown): ResultadoInput[] {
     }
 
     const rawEjercicioId = (item as { ejercicioId?: unknown }).ejercicioId;
-    const rawRepeticiones = (item as { repeticiones?: unknown }).repeticiones;
-
     const ejercicioId = toPositiveInt(
       typeof rawEjercicioId === "number"
         ? rawEjercicioId
@@ -179,18 +245,31 @@ function sanitizeInputEjercicios(ejercicios: unknown): ResultadoInput[] {
       continue;
     }
 
+    const rawRepeticiones = (item as { repeticiones?: unknown }).repeticiones;
+    const rawCarga = (item as { carga?: unknown }).carga;
+    const rawCasas = (item as { casas?: unknown }).casas;
+    const rawNacleiro = (item as { nacleiro?: unknown }).nacleiro;
     const repeticionesNumber =
       typeof rawRepeticiones === "number"
         ? rawRepeticiones
         : Number(rawRepeticiones);
-
-    const repeticiones = Number.isFinite(repeticionesNumber)
-      ? Math.max(0, Math.floor(repeticionesNumber))
-      : 0;
+    const cargaNumber =
+      typeof rawCarga === "number" ? rawCarga : Number(rawCarga);
+    const casasNumber =
+      typeof rawCasas === "number" ? rawCasas : Number(rawCasas);
+    const nacleiroNumber =
+      typeof rawNacleiro === "number" ? rawNacleiro : Number(rawNacleiro);
 
     sanitized.push({
       ejercicioId,
-      repeticiones,
+      repeticiones: Number.isFinite(repeticionesNumber)
+        ? Math.max(0, Math.floor(repeticionesNumber))
+        : 0,
+      carga: Number.isFinite(cargaNumber) ? Math.max(0, cargaNumber) : 0,
+      casas: Number.isFinite(casasNumber) ? Math.max(0, casasNumber) : 0,
+      nacleiro: Number.isFinite(nacleiroNumber)
+        ? Math.max(0, nacleiroNumber)
+        : 0,
     });
   }
 
@@ -205,6 +284,10 @@ export async function createSesion(
     typeof input.requestId === "string" ? input.requestId : "",
   );
   const sanitizedEjercicios = sanitizeInputEjercicios(input.ejercicios);
+  const trainingMonths = Number.isFinite(input.trainingMonths)
+    ? Math.max(0, Math.floor(input.trainingMonths))
+    : 0;
+  const rmMethod = parseRMMethod(input.rmMethod, trainingMonths);
 
   if (!cc) {
     throw new Error("CC invalido.");
@@ -241,38 +324,43 @@ export async function createSesion(
         },
       });
 
-      const rmResults = calculateRMForSession(
+      const fallbackResults = calculateRMForSession(
         input.peso,
         ejerciciosDB,
         sanitizedEjercicios,
         persona.sexo,
+      );
+      const fallbackByExercise = new Map(
+        fallbackResults.map((item) => [item.ejercicioId, item]),
       );
 
       const ejerciciosPermitidos = new Set(
         sanitizedEjercicios.map((item) => item.ejercicioId),
       );
 
-      const resultadosData = rmResults
+      const resultadosData = sanitizedEjercicios
         .filter((item) => ejerciciosPermitidos.has(item.ejercicioId))
-        .map((item) => ({
-          ejercicioId: item.ejercicioId,
-          repeticiones: Number.isFinite(item.repeticiones)
-            ? Math.max(0, Math.floor(item.repeticiones))
-            : 0,
-          carga: roundToTwo(Number.isFinite(item.carga) ? item.carga : 0),
-          epley: roundToTwo(Number.isFinite(item.epley) ? item.epley : 0),
-          brzycki: roundToTwo(Number.isFinite(item.brzycki) ? item.brzycki : 0),
-          lombardi: roundToTwo(
-            Number.isFinite(item.lombardi) ? item.lombardi : 0,
-          ),
-          lander: roundToTwo(Number.isFinite(item.lander) ? item.lander : 0),
-          oconnor: roundToTwo(Number.isFinite(item.oconnor) ? item.oconnor : 0),
-          mayhew: roundToTwo(Number.isFinite(item.mayhew) ? item.mayhew : 0),
-          wathen: roundToTwo(Number.isFinite(item.wathen) ? item.wathen : 0),
-          baechle: roundToTwo(Number.isFinite(item.baechle) ? item.baechle : 0),
-          casas: 0,
-          nacleiro: 0,
-        }));
+        .map((item) => {
+          const fallback = fallbackByExercise.get(item.ejercicioId);
+          const carga = item.carga > 0 ? item.carga : fallback?.carga ?? 0;
+          const formula = calculateRM(carga, item.repeticiones, persona.sexo);
+
+          return {
+            ejercicioId: item.ejercicioId,
+            repeticiones: item.repeticiones,
+            carga: roundToTwo(carga),
+            epley: roundToTwo(formula.epley),
+            brzycki: roundToTwo(formula.brzycki),
+            lombardi: roundToTwo(formula.lombardi),
+            lander: roundToTwo(formula.lander),
+            oconnor: roundToTwo(formula.oconnor),
+            mayhew: roundToTwo(formula.mayhew),
+            wathen: roundToTwo(formula.wathen),
+            baechle: roundToTwo(formula.baechle),
+            casas: roundToTwo(rmMethod === "casas" ? item.casas : 0),
+            nacleiro: roundToTwo(rmMethod === "nacleiro" ? item.nacleiro : 0),
+          };
+        });
 
       if (resultadosData.length === 0) {
         throw new Error(
@@ -285,11 +373,25 @@ export async function createSesion(
         data: { masaCorporal: input.peso },
       });
 
+      const estimatedRM = Math.max(
+        ...sanitizedEjercicios.map((item) => getFormulaRM(item, persona.sexo).estimated),
+      );
+      const finalRM = Math.max(
+        ...sanitizedEjercicios.map((item) =>
+          getFinalRM(item, rmMethod, persona.sexo),
+        ),
+      );
+
       return tx.sesion.create({
         data: {
           personaId: persona.id,
           peso: input.peso,
           requestId,
+          trainingMonths,
+          rmMethod,
+          estimatedRM: estimatedRM > 0 ? roundToTwo(estimatedRM) : null,
+          finalRM: finalRM > 0 ? roundToTwo(finalRM) : null,
+          protocolData: input.protocolData ?? Prisma.JsonNull,
           createdAt: new Date(),
           resultados: {
             create: resultadosData,
@@ -364,9 +466,10 @@ export async function createSesionAction(formData: FormData) {
   }
 
   let saveError: string | null = null;
+  let result: CreateSesionResult | null = null;
 
   try {
-    await createSesion(parsed.data);
+    result = await createSesion(parsed.data);
   } catch (error) {
     saveError =
       error instanceof Error
@@ -374,11 +477,13 @@ export async function createSesionAction(formData: FormData) {
         : "No fue posible crear la sesion. Intenta nuevamente.";
   }
 
-  if (saveError) {
+  if (saveError || !result) {
+    const errorMessage =
+      saveError ?? "No fue posible crear la sesión. Intenta nuevamente.";
     redirect(
-      `/nueva-sesion?cc=${encodeURIComponent(parsed.data.cc)}&error=${encodeURIComponent(saveError)}`,
+      `/nueva-sesion?cc=${encodeURIComponent(parsed.data.cc)}&error=${encodeURIComponent(errorMessage)}`,
     );
   }
 
-  redirect(`/dashboard?cc=${encodeURIComponent(parsed.data.cc)}`);
+  redirect(`/dashboard?cc=${encodeURIComponent(parsed.data.cc)}&saved=1`);
 }
