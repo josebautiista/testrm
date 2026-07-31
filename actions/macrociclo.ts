@@ -20,7 +20,6 @@ import {
   parseDateInput,
   velocidadLegerKmh,
 } from "@/lib/macrociclo";
-import { extraerAntropometriaDesdePdf } from "@/lib/pdf-antropometria";
 import {
   activarMacrociclo,
   cerrarMacrociclo,
@@ -65,7 +64,11 @@ function getBoolean(formData: FormData, name: string): boolean {
   return value === "true" || value === "1" || value === "on";
 }
 
-function redirectToWizard(cc: string, macrocicloId: number, step?: number): never {
+function redirectToWizard(
+  cc: string,
+  macrocicloId: number,
+  step?: number,
+): never {
   const stepQuery = step ? `&paso=${step}` : "";
   redirect(
     `/macrociclo/${macrocicloId}/editar?cc=${encodeURIComponent(cc)}${stepQuery}`,
@@ -285,7 +288,10 @@ type PeriodizacionPayload = {
   cc: string;
   id: number;
   periodos: PeriodoInput[];
-  etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number }[]>;
+  etapasPorPeriodo: Record<
+    TipoPeriodo,
+    { tipo: TipoEtapa; porcentaje: number }[]
+  >;
   mesociclos: MesocicloInput[];
   semanas: SemanaInput[];
 };
@@ -300,7 +306,14 @@ async function parsePeriodizacionFormData(
   const mesociclosRaw = getString(formData, "mesociclos");
   const semanasRaw = getString(formData, "semanas");
 
-  if (!cc || !id || !periodosRaw || !etapasRaw || !mesociclosRaw || !semanasRaw) {
+  if (
+    !cc ||
+    !id ||
+    !periodosRaw ||
+    !etapasRaw ||
+    !mesociclosRaw ||
+    !semanasRaw
+  ) {
     return { error: "Faltan datos para guardar la periodización." };
   }
 
@@ -359,11 +372,20 @@ async function parsePeriodizacionFormData(
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Error al guardar la periodización.";
+      error instanceof Error
+        ? error.message
+        : "Error al guardar la periodización.";
     return { error: message };
   }
 
-  return { cc, id, periodos: periodosValidos, etapasPorPeriodo, mesociclos: mesociclosValidos, semanas: semanasValidas };
+  return {
+    cc,
+    id,
+    periodos: periodosValidos,
+    etapasPorPeriodo,
+    mesociclos: mesociclosValidos,
+    semanas: semanasValidas,
+  };
 }
 
 export async function guardarPeriodizacionAction(formData: FormData) {
@@ -381,10 +403,9 @@ export async function guardarPeriodizacionAction(formData: FormData) {
   redirectToWizard(result.cc, result.id, 10);
 }
 
-export async function guardarPeriodizacionSinRedirectAction(formData: FormData): Promise<
-  | { success: true }
-  | { success: false; error: string }
-> {
+export async function guardarPeriodizacionSinRedirectAction(
+  formData: FormData,
+): Promise<{ success: true } | { success: false; error: string }> {
   const result = await parsePeriodizacionFormData(formData);
 
   if ("error" in result) {
@@ -411,7 +432,9 @@ export async function activarMacrocicloAction(formData: FormData) {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "No se pudo activar el macrociclo.";
+      error instanceof Error
+        ? error.message
+        : "No se pudo activar el macrociclo.";
     redirect(
       `/macrociclo/${id}?cc=${encodeURIComponent(cc)}&error=${encodeURIComponent(message)}`,
     );
@@ -443,12 +466,18 @@ export async function eliminarMacrocicloAction(formData: FormData) {
   const persona = await getPersona(cc);
   if (!persona) redirect("/");
 
-  await eliminarMacrociclo({ id, personaId: persona.id, context: getContext() });
+  await eliminarMacrociclo({
+    id,
+    personaId: persona.id,
+    context: getContext(),
+  });
 
   redirect(`/dashboard?cc=${encodeURIComponent(cc)}`);
 }
 
-export async function procesarPdfAntropometriaAction(formData: FormData): Promise<
+export async function procesarPdfAntropometriaAction(
+  formData: FormData,
+): Promise<
   | { success: true; medidas: MedidasSnapshot; reconocido: boolean }
   | { success: false; error: string }
 > {
@@ -479,11 +508,14 @@ export async function procesarPdfAntropometriaAction(formData: FormData): Promis
   try {
     const bytes = await archivo.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    const { extraerAntropometriaDesdePdf } =
+      await import("@/lib/pdf-antropometria");
     const { medidas, reconocido } = await extraerAntropometriaDesdePdf(buffer);
 
     return { success: true, medidas, reconocido };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error al procesar PDF.";
+    const message =
+      error instanceof Error ? error.message : "Error al procesar PDF.";
     return { success: false, error: message };
   }
 }

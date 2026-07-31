@@ -30,7 +30,10 @@ function escapeRegex(value: string): string {
  *   Label (unidad)   actual   previo   diferencia   z-score
  * Siempre nos quedamos con el primer valor numérico (la medida actual).
  */
-function findValueNearLabel(text: string, labels: string[]): string | undefined {
+function findValueNearLabel(
+  text: string,
+  labels: string[],
+): string | undefined {
   const normalizedText = removeTildes(text).toLowerCase();
   for (const label of labels) {
     const normalizedLabel = removeTildes(label).toLowerCase();
@@ -110,7 +113,10 @@ function findTextBetweenLabels(
  * Extrae un campo de texto simple ubicado cerca de una etiqueta.
  * Ejemplo: "Nombre:   CAMILO ANDRÉS LOZANO"
  */
-function findTextAfterLabel(text: string, labels: string[]): string | undefined {
+function findTextAfterLabel(
+  text: string,
+  labels: string[],
+): string | undefined {
   return findTextBetweenLabels(text, labels, []);
 }
 
@@ -126,10 +132,7 @@ function extraerSeccion(
 ): string {
   const normalizedText = removeTildes(text).toLowerCase();
   const normalizedTitulo = removeTildes(titulo).toLowerCase();
-  const startRegex = new RegExp(
-    `\\b${escapeRegex(normalizedTitulo)}\\b`,
-    "i",
-  );
+  const startRegex = new RegExp(`\\b${escapeRegex(normalizedTitulo)}\\b`, "i");
   const startMatch = normalizedText.match(startRegex);
   if (!startMatch || startMatch.index === undefined) return "";
 
@@ -138,10 +141,7 @@ function extraerSeccion(
 
   for (const siguiente of siguientesTitulos) {
     const normalizedSiguiente = removeTildes(siguiente).toLowerCase();
-    const regex = new RegExp(
-      `\\b${escapeRegex(normalizedSiguiente)}\\b`,
-      "i",
-    );
+    const regex = new RegExp(`\\b${escapeRegex(normalizedSiguiente)}\\b`, "i");
     const match = normalizedText.slice(startPos).match(regex);
     if (match && match.index !== undefined) {
       endPos = Math.min(endPos, startPos + match.index);
@@ -185,9 +185,11 @@ async function extraerTextoPdf(buffer: Buffer): Promise<string> {
   return parts.join("\n");
 }
 
-export function extraerAntropometriaDesdeTexto(
-  text: string,
-): { medidas: MedidasSnapshot; rawText: string; reconocido: boolean } {
+export function extraerAntropometriaDesdeTexto(text: string): {
+  medidas: MedidasSnapshot;
+  rawText: string;
+  reconocido: boolean;
+} {
   if (!text || text.trim().length === 0) {
     return {
       medidas: {},
@@ -215,26 +217,32 @@ export function extraerAntropometriaDesdeTexto(
     "Nivel de actividad",
   ];
 
-  const nombreRaw = findTextBetweenLabels(text, ["Nombre"], [
-    "Evaluado por",
-    ...headerEndLabels,
-  ]);
-  const evaluadorRaw = findTextBetweenLabels(text, ["Evaluado por"], [
-    ...headerEndLabels,
-  ]);
+  const nombreRaw = findTextBetweenLabels(
+    text,
+    ["Nombre"],
+    ["Evaluado por", ...headerEndLabels],
+  );
+  const evaluadorRaw = findTextBetweenLabels(
+    text,
+    ["Evaluado por"],
+    [...headerEndLabels],
+  );
   const edadRaw = findValueNearLabel(text, ["Edad"]);
-  const generoRaw = findTextBetweenLabels(text, ["Genero", "Género"], [
-    ...headerEndLabels,
-  ]);
-  const deporteRaw = findTextBetweenLabels(text, ["Deporte"], [
-    ...headerEndLabels,
-  ]);
-  const fechaRaw = findTextBetweenLabels(text, ["Fecha"], [
-    ...headerEndLabels,
-  ]);
+  const generoRaw = findTextBetweenLabels(
+    text,
+    ["Genero", "Género"],
+    [...headerEndLabels],
+  );
+  const deporteRaw = findTextBetweenLabels(
+    text,
+    ["Deporte"],
+    [...headerEndLabels],
+  );
+  const fechaRaw = findTextBetweenLabels(text, ["Fecha"], [...headerEndLabels]);
 
   if (nombreRaw) metadata.nombre = nombreRaw.replace(/\s+/g, " ").trim();
-  if (evaluadorRaw) metadata.evaluador = evaluadorRaw.replace(/\s+/g, " ").trim();
+  if (evaluadorRaw)
+    metadata.evaluador = evaluadorRaw.replace(/\s+/g, " ").trim();
   if (edadRaw) {
     const edad = parseNumber(edadRaw);
     if (edad !== undefined) metadata.edad = Math.round(edad);
@@ -408,13 +416,17 @@ export function extraerAntropometriaDesdeTexto(
   }
 
   // --- Distribución adiposo muscular ---
-  const distribucionSection = extraerSeccion(text, "Distribución adiposo muscular", [
-    "Índices de composición corporal",
-    "Indice adiposo muscular",
-    "Adiposidad",
-    "Muscularidad",
-    "Índices de salud",
-  ]);
+  const distribucionSection = extraerSeccion(
+    text,
+    "Distribución adiposo muscular",
+    [
+      "Índices de composición corporal",
+      "Indice adiposo muscular",
+      "Adiposidad",
+      "Muscularidad",
+      "Índices de salud",
+    ],
+  );
 
   const distribucionAdiposoMuscular: MedidasSnapshot["distribucionAdiposoMuscular"] =
     {};
@@ -470,10 +482,7 @@ export function extraerAntropometriaDesdeTexto(
       raw["tejidoMuscularPiernaPct"] = muscular.piernaPct;
     }
 
-    if (
-      Object.keys(grasa).length > 0 ||
-      Object.keys(muscular).length > 0
-    ) {
+    if (Object.keys(grasa).length > 0 || Object.keys(muscular).length > 0) {
       distribucionAdiposoMuscular.masaGrasa = grasa;
       distribucionAdiposoMuscular.tejidoMuscular = muscular;
     }
