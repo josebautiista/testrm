@@ -131,19 +131,6 @@ export default function RegistroPage({
                 required
               />
             </Section>
-
-            <div className="sm:col-span-2">
-              <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-sm text-text-secondary dark:border-white/6">
-                <input
-                  id="entrenado"
-                  name="entrenado"
-                  type="checkbox"
-                  value="true"
-                  className="mt-1 h-4 w-4 rounded border-gray-300 bg-bg-main dark:border-white/10"
-                />
-                <span>He entrenado por al menos 2 meses</span>
-              </label>
-            </div>
           </div>
 
           {state.error ? (

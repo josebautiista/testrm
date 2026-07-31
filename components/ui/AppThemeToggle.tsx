@@ -5,13 +5,10 @@ import { useEffect, useState } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 
 export function AppThemeToggle() {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    const savedTheme = window.localStorage.getItem("theme");
-    const prefersDark = savedTheme !== "light";
-    setIsDark(prefersDark);
-  }, []);
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return document.documentElement.classList.contains("dark");
+  });
 
   useEffect(() => {
     const root = document.documentElement;

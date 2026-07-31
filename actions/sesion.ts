@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { Prisma, PrismaClient } from "@prisma/client";
 
@@ -22,14 +23,20 @@ type CreateSesionInput = {
   peso: number;
   trainingMonths: number;
   rmMethod: RMMethod;
+  estimatedRM: number;
+  finalRM: number;
   protocolData: Prisma.InputJsonValue | null;
   ejercicios: ResultadoInput[];
+  macrocicloId?: number | null;
+  returnTo?: string | null;
 };
 
 type CreateSesionResult = {
   success: true;
   sesionId: number;
 };
+
+const EXERCISES_WITHOUT_LOAD = new Set([4]);
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -159,7 +166,18 @@ function parseCreateSesionInput(
   const peso = typeof rawPeso === "string" ? Number(rawPeso.trim()) : NaN;
   const trainingMonths = parseNonNegativeInt(formData.get("trainingMonths"));
   const rmMethod = parseRMMethod(formData.get("rmMethod"), trainingMonths);
+  const estimatedRM = parseNonNegativeNumber(formData.get("estimatedRM"));
+  const finalRM = parseNonNegativeNumber(formData.get("finalRM"));
   const protocolData = parseProtocolData(formData.get("protocolData"));
+  const rawMacrocicloId = formData.get("macrocicloId");
+  const macrocicloId =
+    typeof rawMacrocicloId === "string" && rawMacrocicloId.trim() !== ""
+      ? Number(rawMacrocicloId.trim())
+      : null;
+  const returnTo =
+    typeof formData.get("returnTo") === "string"
+      ? formData.get("returnTo")?.toString().trim() || null
+      : null;
 
   if (!cc) {
     return { ok: false, error: "Cédula inválida.", cc: "" };
@@ -200,10 +218,18 @@ function parseCreateSesionInput(
     });
   }
 
-  if (resultados.length === 0) {
+  if (rmMethod === "estimation" && resultados.length === 0) {
     return {
       ok: false,
       error: "No se encontraron ejercicios válidos para registrar.",
+      cc,
+    };
+  }
+
+  if (rmMethod !== "estimation" && finalRM <= 0) {
+    return {
+      ok: false,
+      error: "Debes completar el protocolo para registrar el RM final.",
       cc,
     };
   }
@@ -216,8 +242,12 @@ function parseCreateSesionInput(
       peso,
       trainingMonths,
       rmMethod,
+      estimatedRM,
+      finalRM,
       protocolData,
       ejercicios: resultados,
+      macrocicloId: macrocicloId && Number.isInteger(macrocicloId) && macrocicloId > 0 ? macrocicloId : null,
+      returnTo,
     },
   };
 }
@@ -297,7 +327,7 @@ export async function createSesion(
     throw new Error("No fue posible preparar el envio de la sesion.");
   }
 
-  if (sanitizedEjercicios.length === 0) {
+  if (rmMethod === "estimation" && sanitizedEjercicios.length === 0) {
     throw new Error("No se encontraron ejercicios validos para registrar.");
   }
 
@@ -342,7 +372,11 @@ export async function createSesion(
         .filter((item) => ejerciciosPermitidos.has(item.ejercicioId))
         .map((item) => {
           const fallback = fallbackByExercise.get(item.ejercicioId);
-          const carga = item.carga > 0 ? item.carga : fallback?.carga ?? 0;
+          const carga = EXERCISES_WITHOUT_LOAD.has(item.ejercicioId)
+            ? 0
+            : item.carga > 0
+              ? item.carga
+              : fallback?.carga ?? 0;
           const formula = calculateRM(carga, item.repeticiones, persona.sexo);
 
           return {
@@ -362,7 +396,7 @@ export async function createSesion(
           };
         });
 
-      if (resultadosData.length === 0) {
+      if (rmMethod === "estimation" && resultadosData.length === 0) {
         throw new Error(
           "No se pudieron preparar resultados validos para la sesion.",
         );
@@ -373,14 +407,22 @@ export async function createSesion(
         data: { masaCorporal: input.peso },
       });
 
-      const estimatedRM = Math.max(
-        ...sanitizedEjercicios.map((item) => getFormulaRM(item, persona.sexo).estimated),
-      );
-      const finalRM = Math.max(
-        ...sanitizedEjercicios.map((item) =>
-          getFinalRM(item, rmMethod, persona.sexo),
-        ),
-      );
+      const estimatedRM =
+        sanitizedEjercicios.length > 0
+          ? Math.max(
+              ...sanitizedEjercicios.map(
+                (item) => getFormulaRM(item, persona.sexo).estimated,
+              ),
+            )
+          : input.estimatedRM;
+      const finalRM =
+        sanitizedEjercicios.length > 0
+          ? Math.max(
+              ...sanitizedEjercicios.map((item) =>
+                getFinalRM(item, rmMethod, persona.sexo),
+              ),
+            )
+          : input.finalRM;
 
       return tx.sesion.create({
         data: {
@@ -485,5 +527,42 @@ export async function createSesionAction(formData: FormData) {
     );
   }
 
+  if (
+    parsed.data.returnTo === "macrociclo" &&
+    parsed.data.macrocicloId &&
+    result?.sesionId
+  ) {
+    redirect(
+      `/macrociclo/${parsed.data.macrocicloId}/editar?cc=${encodeURIComponent(parsed.data.cc)}&paso=5`,
+    );
+  }
+
   redirect(`/dashboard?cc=${encodeURIComponent(parsed.data.cc)}&saved=1`);
+}
+
+export async function deleteSesionAction(formData: FormData) {
+  const rawSesionId = formData.get("sesionId");
+  const rawCC = formData.get("cc");
+  const sesionId = typeof rawSesionId === "string" ? Number(rawSesionId) : NaN;
+  const cc = typeof rawCC === "string" ? normalizeCC(rawCC) : "";
+
+  if (!cc) {
+    redirect("/");
+  }
+
+  if (!Number.isInteger(sesionId) || sesionId <= 0) {
+    redirect(`/dashboard?cc=${encodeURIComponent(cc)}&deleteError=1`);
+  }
+
+  await prisma.sesion.deleteMany({
+    where: {
+      id: sesionId,
+      persona: {
+        cc,
+      },
+    },
+  });
+
+  revalidatePath("/dashboard");
+  redirect(`/dashboard?cc=${encodeURIComponent(cc)}&deleted=1`);
 }

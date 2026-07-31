@@ -8,7 +8,10 @@ import { UserLevelPersonalization } from "@/components/results/UserLevelPersonal
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
+import { calculateRepetitionValue, calculateStrengthIndex } from "@/lib/rm";
 import { getUserLevel } from "@/lib/user-level";
+
+const EXERCISES_WITHOUT_LOAD = new Set([4]);
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -96,6 +99,34 @@ function getMethodLabel(method: string) {
   return "Estimación";
 }
 
+function getProtocolSummary(protocolData: unknown) {
+  if (!protocolData || typeof protocolData !== "object") {
+    return null;
+  }
+
+  const data = protocolData as {
+    exerciseName?: unknown;
+    referenceRM?: unknown;
+    estimatedRM?: unknown;
+    finalRM?: unknown;
+    initialWeight?: unknown;
+    kies?: unknown;
+  };
+
+  return {
+    exerciseName:
+      typeof data.exerciseName === "string" ? data.exerciseName : "",
+    referenceRM:
+      typeof data.referenceRM === "number" ? data.referenceRM : null,
+    estimatedRM:
+      typeof data.estimatedRM === "number" ? data.estimatedRM : null,
+    finalRM: typeof data.finalRM === "number" ? data.finalRM : null,
+    initialWeight:
+      typeof data.initialWeight === "number" ? data.initialWeight : null,
+    kies: typeof data.kies === "number" ? data.kies : null,
+  };
+}
+
 export default async function SesionDetailPage({
   params,
   searchParams,
@@ -121,6 +152,11 @@ export default async function SesionDetailPage({
   const sesion = await prisma.sesion.findUnique({
     where: { id: sesionId },
     include: {
+      persona: {
+        select: {
+          sexo: true,
+        },
+      },
       resultados: {
         include: {
           ejercicio: {
@@ -152,6 +188,14 @@ export default async function SesionDetailPage({
           )
         : 0;
   const autoLevel = getUserLevel(globalRM, sesion.peso);
+  const protocolSummary = getProtocolSummary(sesion.protocolData);
+  const strengthIndex = calculateStrengthIndex(
+    sesion.resultados.map((resultado) => ({
+      ejercicioId: resultado.ejercicioId,
+      repeticiones: resultado.repeticiones,
+    })),
+    sesion.persona.sexo,
+  );
 
   return (
     <main className="space-y-8 pb-10">
@@ -179,6 +223,14 @@ export default async function SesionDetailPage({
             value={globalRM > 0 ? `${formatNumber(globalRM)} kg` : "Pendiente"}
             compact
           />
+          {sesion.resultados.length > 0 ? (
+            <MetricRow
+              label="Indice de fuerza"
+              value={`${strengthIndex.total} · ${strengthIndex.label}`}
+              tone="positive"
+              compact
+            />
+          ) : null}
         </div>
       </header>
 
@@ -190,9 +242,64 @@ export default async function SesionDetailPage({
       ) : null}
 
       {sesion.resultados.length === 0 ? (
-        <p className="text-base text-text-secondary">
-          No hay resultados registrados para esta sesión.
-        </p>
+        protocolSummary ? (
+          <section className="space-y-3 rounded-2xl border border-gray-200 bg-bg-soft p-4 dark:border-white/10">
+            <h2 className="text-base font-semibold text-text-primary dark:text-white">
+              Resumen del protocolo
+            </h2>
+            <div className="space-y-0.5">
+              <MetricRow
+                label="Ejercicio base"
+                value={protocolSummary.exerciseName || "Sin nombre"}
+                compact
+              />
+              {protocolSummary.referenceRM !== null ? (
+                <MetricRow
+                  label="RM de referencia"
+                  value={`${formatNumber(protocolSummary.referenceRM)} kg`}
+                  compact
+                />
+              ) : null}
+              {protocolSummary.estimatedRM !== null ? (
+                <MetricRow
+                  label="RM estimado"
+                  value={`${formatNumber(protocolSummary.estimatedRM)} kg`}
+                  compact
+                />
+              ) : null}
+              {protocolSummary.initialWeight !== null ? (
+                <MetricRow
+                  label="Peso inicial"
+                  value={`${formatNumber(protocolSummary.initialWeight)} kg`}
+                  compact
+                />
+              ) : null}
+              {protocolSummary.kies !== null ? (
+                <MetricRow
+                  label="KIES"
+                  value={`${formatNumber(protocolSummary.kies)} kg`}
+                  compact
+                />
+              ) : null}
+              <MetricRow
+                label="RM final"
+                value={
+                  protocolSummary.finalRM
+                    ? `${formatNumber(protocolSummary.finalRM)} kg`
+                    : globalRM > 0
+                      ? `${formatNumber(globalRM)} kg`
+                      : "Pendiente"
+                }
+                tone="positive"
+                compact
+              />
+            </div>
+          </section>
+        ) : (
+          <p className="text-base text-text-secondary">
+            No hay resultados registrados para esta sesión.
+          </p>
+        )
       ) : (
         <div className="space-y-6">
           <UserLevelPersonalization autoLevel={autoLevel} />
@@ -201,6 +308,14 @@ export default async function SesionDetailPage({
             {sesion.resultados.map((resultado) => {
               const estimatedRM = getEstimatedRM(resultado);
               const formulaRows = getFormulaRows(resultado);
+              const withoutLoad = EXERCISES_WITHOUT_LOAD.has(
+                resultado.ejercicioId,
+              );
+              const repetitionValue = calculateRepetitionValue(
+                resultado.repeticiones,
+                resultado.ejercicioId,
+                sesion.persona.sexo,
+              );
 
               return (
                 <article
@@ -212,42 +327,60 @@ export default async function SesionDetailPage({
                     {resultado.ejercicio.nombre}
                   </h2>
                   <p className="text-sm text-text-secondary">
-                    {resultado.repeticiones} repeticiones ·{" "}
-                    {formatNumber(resultado.carga)} kg
-                    <InfoTooltip text="Peso recomendado según tu cuerpo: calculado a partir de tu masa corporal y el porcentaje sugerido para este ejercicio." />
+                    {withoutLoad ? (
+                      `${resultado.repeticiones} repeticiones en 1 minuto`
+                    ) : (
+                      <>
+                        {resultado.repeticiones} repeticiones ·{" "}
+                        {formatNumber(resultado.carga)} kg
+                        <InfoTooltip text="Peso recomendado según tu cuerpo: calculado a partir de tu masa corporal y el porcentaje sugerido para este ejercicio." />
+                      </>
+                    )}
                   </p>
                 </header>
 
-                <Section title="Estimaciones de peso máximo (1RM)" className="space-y-2">
-                  <div className="space-y-0.5">
-                    {formulaRows.map((formula) => (
-                      <MetricRow
-                        key={formula.label}
-                        label={formula.label}
-                        value={`${formatNumber(formula.value)} kg`}
-                        compact
-                      />
-                    ))}
-                    {resultado.casas > 0 ? (
-                      <MetricRow
-                        label="Protocolo Casas"
-                        value={`${formatNumber(resultado.casas)} kg`}
-                        tone="positive"
-                        compact
-                      />
-                    ) : null}
-                    {resultado.nacleiro > 0 ? (
-                      <MetricRow
-                        label="Test Nacleiro"
-                        value={`${formatNumber(resultado.nacleiro)} kg`}
-                        tone="positive"
-                        compact
-                      />
-                    ) : null}
-                  </div>
+                <Section title="Valor para indice de fuerza" className="space-y-2">
+                  <MetricRow
+                    label="Valor"
+                    value={String(repetitionValue)}
+                    compact
+                  />
                 </Section>
 
-                  <TrainingRecommendations rm={estimatedRM} level={autoLevel} />
+                {!withoutLoad ? (
+                  <>
+                    <Section title="Estimaciones de peso máximo (1RM)" className="space-y-2">
+                      <div className="space-y-0.5">
+                        {formulaRows.map((formula) => (
+                          <MetricRow
+                            key={formula.label}
+                            label={formula.label}
+                            value={`${formatNumber(formula.value)} kg`}
+                            compact
+                          />
+                        ))}
+                        {resultado.casas > 0 ? (
+                          <MetricRow
+                            label="Protocolo Casas"
+                            value={`${formatNumber(resultado.casas)} kg`}
+                            tone="positive"
+                            compact
+                          />
+                        ) : null}
+                        {resultado.nacleiro > 0 ? (
+                          <MetricRow
+                            label="Test Nacleiro"
+                            value={`${formatNumber(resultado.nacleiro)} kg`}
+                            tone="positive"
+                            compact
+                          />
+                        ) : null}
+                      </div>
+                    </Section>
+
+                    <TrainingRecommendations rm={estimatedRM} level={autoLevel} />
+                  </>
+                ) : null}
                 </article>
               );
             })}

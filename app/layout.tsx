@@ -22,7 +22,28 @@ export default function RootLayout({
   void ensureDefaultAdminUser();
 
   return (
-    <html lang="es" className={`${inter.variable} h-full antialiased dark`}>
+    <html
+      lang="es"
+      className={`${inter.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                try {
+                  const saved = window.localStorage.getItem("theme");
+                  const isDark = saved !== "light";
+                  document.documentElement.classList.toggle("dark", isDark);
+                } catch {
+                  document.documentElement.classList.add("dark");
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className="min-h-full bg-white font-sans text-gray-900 selection:bg-accent/25 dark:bg-bg-main dark:text-white">
         <div className="pointer-events-none fixed inset-x-0 top-5 z-50">
           <div className="pointer-events-auto mx-auto flex w-full max-w-105 items-center justify-between px-4 lg:max-w-6xl">

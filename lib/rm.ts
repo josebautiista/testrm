@@ -13,6 +13,18 @@ export type RMResult = {
 
 export type SexoRM = "masculino" | "femenino";
 
+export type StrengthIndexLabel =
+  | "Bajo"
+  | "Regular"
+  | "Buena"
+  | "Muy buena"
+  | "Excelente";
+
+export type StrengthIndexResult = {
+  total: number;
+  label: StrengthIndexLabel;
+};
+
 type SessionExercise = {
   id: number;
   porcentajeMasaHombre: number;
@@ -28,6 +40,7 @@ type SessionRMResult = {
   ejercicioId: number;
   repeticiones: number;
   carga: number;
+  valor: number;
 } & RMResult;
 
 const ZERO_RM_RESULT: RMResult = {
@@ -40,6 +53,9 @@ const ZERO_RM_RESULT: RMResult = {
   wathen: 0,
   baechle: 0,
 };
+
+const REPETITION_VALUES = [5, 7, 9, 11, 13, 15, 17] as const;
+const STRENGTH_REPETITION_LIMITS = [3, 5, 8, 10, 15, 24, Infinity] as const;
 
 export function roundToTwo(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -87,6 +103,66 @@ function normalizeSexo(sexo?: string): SexoRM {
 
   const normalized = sexo.trim().toLowerCase();
   return normalized === "femenino" ? "femenino" : "masculino";
+}
+
+export function calculateRepetitionValue(
+  repeticiones: number,
+  _ejercicioId?: number,
+  _sexo?: SexoRM | string,
+): number {
+  void _ejercicioId;
+  void _sexo;
+
+  if (!Number.isFinite(repeticiones)) {
+    return 0;
+  }
+
+  const reps = Math.abs(Math.floor(repeticiones));
+  const valueIndex = STRENGTH_REPETITION_LIMITS.findIndex(
+    (limit) => reps <= limit,
+  );
+
+  return valueIndex >= 0 ? REPETITION_VALUES[valueIndex] : 0;
+}
+
+export function getStrengthIndexClassification(
+  total: number,
+): StrengthIndexLabel {
+  if (!Number.isFinite(total)) {
+    return "Bajo";
+  }
+
+  const absoluteTotal = Math.abs(total);
+
+  if (absoluteTotal <= 53) {
+    return "Bajo";
+  }
+
+  if (absoluteTotal <= 65) return "Regular";
+  if (absoluteTotal <= 77) return "Buena";
+  if (absoluteTotal <= 89) return "Muy buena";
+  return "Excelente";
+}
+
+export function calculateStrengthIndex(
+  resultados: Array<{ ejercicioId: number; repeticiones: number }>,
+  sexo: SexoRM | string = "masculino",
+): StrengthIndexResult {
+  const total = resultados.reduce(
+    (sum, resultado) =>
+      sum +
+      calculateRepetitionValue(
+        resultado.repeticiones,
+        resultado.ejercicioId,
+        sexo,
+      ),
+    0,
+  );
+
+  return {
+    total,
+    label: getStrengthIndexClassification(total),
+  };
 }
 
 function calculateRMFemenino(carga: number, reps: number): RMResult {
@@ -266,6 +342,7 @@ export function calculateRMForSession(
       ejercicioId: ejercicio.id,
       repeticiones,
       carga,
+      valor: calculateRepetitionValue(repeticiones, ejercicio.id, sexo),
       ...rm,
     };
   });

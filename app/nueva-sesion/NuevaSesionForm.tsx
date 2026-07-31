@@ -32,12 +32,16 @@ type Persona = {
 
 type RMMethod = "estimation" | "casas" | "nacleiro";
 
+const EXERCISES_WITHOUT_LOAD = new Set([4]);
+
 interface Props {
   cc: string;
   requestId: string;
   persona: Persona;
   ejercicios: Ejercicio[];
   error?: string;
+  macrocicloId?: string;
+  returnTo?: string;
 }
 
 export function NuevaSesionForm({
@@ -46,6 +50,8 @@ export function NuevaSesionForm({
   persona,
   ejercicios,
   error,
+  macrocicloId,
+  returnTo,
 }: Props) {
   const [pesoActual, setPesoActual] = useState<number | "">(
     persona.masaCorporal,
@@ -75,10 +81,6 @@ export function NuevaSesionForm({
     return masa * getPorcentajeMasa(persona, ejercicio);
   }
 
-  function getSuggestedRM(ejercicio: Ejercicio) {
-    return getCargaBase(ejercicio) * 1.25;
-  }
-
   function handleFormKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -99,6 +101,15 @@ export function NuevaSesionForm({
     setTrainingMonths(normalizedMonths);
     setTrainingMonthsInput(String(normalizedMonths));
     setRMMethod("estimation");
+  }
+
+  function handleTrainingMonthsKeyDown(
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleTrainingMonthsSubmit();
+    }
   }
 
   return (
@@ -134,6 +145,7 @@ export function NuevaSesionForm({
                 inputMode="numeric"
                 value={trainingMonthsInput}
                 onChange={(e) => setTrainingMonthsInput(e.target.value)}
+                onKeyDown={handleTrainingMonthsKeyDown}
                 className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-4 text-lg text-text-primary outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-bg-subtle dark:text-white"
                 placeholder="Ej. 3"
               />
@@ -159,6 +171,12 @@ export function NuevaSesionForm({
           <input type="hidden" name="requestId" value={requestId} />
           <input type="hidden" name="trainingMonths" value={trainingMonths} />
           <input type="hidden" name="rmMethod" value={rmMethod} />
+          {macrocicloId ? (
+            <input type="hidden" name="macrocicloId" value={macrocicloId} />
+          ) : null}
+          {returnTo ? (
+            <input type="hidden" name="returnTo" value={returnTo} />
+          ) : null}
 
           <Section title="Datos de la sesión">
             <label className="flex flex-col gap-2 py-4">
@@ -257,57 +275,80 @@ export function NuevaSesionForm({
               />
               <div className="space-y-4">
                 <p className="text-sm text-text-secondary">
-                  Ingresa el peso levantado y las repeticiones realizadas. El
-                  sistema calculará tu 1RM con Epley y Brzycki.
+                  Ingresa el peso levantado y las repeticiones realizadas. En
+                  abdominales solo registra las repeticiones hechas en 1 minuto.
                 </p>
                 <div className="divide-y divide-gray-200 dark:divide-white/6">
-                  {ejercicios.map((ejercicio) => (
-                    <div
-                      key={ejercicio.id}
-                      className="grid gap-3 py-4 sm:grid-cols-[1fr_9rem_9rem]"
-                    >
-                      <div>
-                        <p className="text-base font-semibold text-text-primary dark:text-white">
-                          {ejercicio.nombre}
-                        </p>
-                        <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">
-                          Sugerido: {formatWeight(getCargaBase(ejercicio))} kg
-                        </p>
+                  {ejercicios.map((ejercicio) => {
+                    const withoutLoad = EXERCISES_WITHOUT_LOAD.has(
+                      ejercicio.id,
+                    );
+
+                    return (
+                      <div
+                        key={ejercicio.id}
+                        className={[
+                          "grid gap-3 py-4",
+                          withoutLoad
+                            ? "sm:grid-cols-[1fr_9rem]"
+                            : "sm:grid-cols-[1fr_9rem_9rem]",
+                        ].join(" ")}
+                      >
+                        <div>
+                          <p className="text-base font-semibold text-text-primary dark:text-white">
+                            {ejercicio.nombre}
+                          </p>
+                          <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">
+                            {withoutLoad
+                              ? "Repeticiones en 1 minuto"
+                              : `Sugerido: ${formatWeight(getCargaBase(ejercicio))} kg`}
+                          </p>
+                        </div>
+                        {withoutLoad ? (
+                          <input
+                            type="hidden"
+                            name={`carga_${ejercicio.id}`}
+                            value="0"
+                          />
+                        ) : (
+                          <label>
+                            <span className="text-sm font-medium text-text-primary dark:text-white">
+                              Peso levantado
+                            </span>
+                            <input
+                              name={`carga_${ejercicio.id}`}
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              defaultValue={formatWeight(
+                                getCargaBase(ejercicio),
+                              )}
+                              className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-right text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
+                            />
+                          </label>
+                        )}
+                        <label>
+                          <span className="text-sm font-medium text-text-primary dark:text-white">
+                            Repeticiones
+                          </span>
+                          <input
+                            name={`repeticiones_${ejercicio.id}`}
+                            type="number"
+                            min="0"
+                            step="1"
+                            defaultValue="0"
+                            inputMode="numeric"
+                            className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-right text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
+                          />
+                        </label>
+                        <input
+                          type="hidden"
+                          name="ejercicioIds"
+                          value={ejercicio.id}
+                        />
                       </div>
-                      <label>
-                        <span className="text-sm font-medium text-text-primary dark:text-white">
-                          Peso levantado
-                        </span>
-                        <input
-                          name={`carga_${ejercicio.id}`}
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          defaultValue={formatWeight(getCargaBase(ejercicio))}
-                          className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-right text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
-                        />
-                      </label>
-                      <label>
-                        <span className="text-sm font-medium text-text-primary dark:text-white">
-                          Repeticiones
-                        </span>
-                        <input
-                          name={`repeticiones_${ejercicio.id}`}
-                          type="number"
-                          min="0"
-                          step="1"
-                          defaultValue="0"
-                          inputMode="numeric"
-                          className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-right text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
-                        />
-                      </label>
-                      <input
-                        type="hidden"
-                        name="ejercicioIds"
-                        value={ejercicio.id}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </Section>
@@ -315,38 +356,16 @@ export function NuevaSesionForm({
 
           {rmMethod === "casas" && canUseAdvancedMethods ? (
             <Section title="Protocolo Casas">
-              <CasasProtocol
-                ejercicios={ejercicios}
-                getSuggestedWeight={getCargaBase}
-                formatWeight={formatWeight}
-              />
-              {ejercicios.map((ejercicio) => (
-                <input
-                  key={ejercicio.id}
-                  type="hidden"
-                  name="ejercicioIds"
-                  value={ejercicio.id}
-                />
-              ))}
+              <CasasProtocol formatWeight={formatWeight} />
             </Section>
           ) : null}
 
           {rmMethod === "nacleiro" && canUseAdvancedMethods ? (
             <Section title="Test Nacleiro">
               <NacleiroTable
-                ejercicios={ejercicios}
                 bodyWeight={typeof pesoActual === "number" ? pesoActual : 0}
-                getSuggestedRM={getSuggestedRM}
                 formatWeight={formatWeight}
               />
-              {ejercicios.map((ejercicio) => (
-                <input
-                  key={ejercicio.id}
-                  type="hidden"
-                  name="ejercicioIds"
-                  value={ejercicio.id}
-                />
-              ))}
             </Section>
           ) : null}
 

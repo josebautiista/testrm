@@ -24,24 +24,31 @@ type DriverStep = {
   };
 };
 
-async function ensureDriver() {
+type DriverConstructor = new (options: Record<string, unknown>) => {
+  defineSteps: (steps: unknown[]) => void;
+  start: () => void;
+};
+
+async function ensureDriver(): Promise<DriverConstructor | null> {
   if (typeof window === "undefined") return null;
 
-  const mod = await import("driver.js");
-  const Driver = (mod && (mod as any).default) || mod;
+  const mod = (await import("driver.js")) as unknown as {
+    default?: DriverConstructor;
+  };
+  const Driver = mod.default;
 
-  return Driver;
+  return Driver ?? null;
 }
 
 export async function startDriver(
   steps: DriverStep[],
-  options: Record<string, any> = {},
+  options: Record<string, unknown> = {},
 ) {
   if (typeof window === "undefined") return;
   try {
     const Driver = await ensureDriver();
     if (!Driver) return;
-    const driver = new (Driver as any)(
+    const driver = new Driver(
       Object.assign(
         {
           opacity: 0.6,
@@ -58,9 +65,8 @@ export async function startDriver(
       ),
     );
 
-    // Convert our steps to driver format if needed
-    const dSteps = steps.map((s: any) => {
-      const element = s.element ?? s.selector ?? null;
+    const dSteps = steps.map((s) => {
+      const element = s.element ?? null;
       return {
         element,
         popover: {
@@ -74,9 +80,7 @@ export async function startDriver(
     driver.defineSteps(dSteps);
     driver.start();
     return driver;
-  } catch (err) {
-    // fail silently
-    // console.error('driver start error', err);
+  } catch {
     return null;
   }
 }

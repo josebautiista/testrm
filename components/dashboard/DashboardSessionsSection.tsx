@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { deleteSesionAction } from "@/actions/sesion";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 
 type DashboardSession = {
@@ -16,7 +17,9 @@ type DashboardSession = {
 type DashboardSessionsSectionProps = {
   sessions: DashboardSession[];
   newSessionHref: string;
+  cc: string;
   saved?: boolean;
+  deleted?: boolean;
 };
 
 const PREVIEW_LIMIT = 5;
@@ -24,7 +27,9 @@ const PREVIEW_LIMIT = 5;
 export function DashboardSessionsSection({
   sessions,
   newSessionHref,
+  cc,
   saved = false,
+  deleted = false,
 }: DashboardSessionsSectionProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const [showAll, setShowAll] = useState(false);
@@ -81,6 +86,10 @@ export function DashboardSessionsSection({
           <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
             Sesión guardada correctamente
           </p>
+        ) : deleted ? (
+          <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
+            Sesión eliminada correctamente
+          </p>
         ) : (
           <p className="text-xs text-text-tertiary">
             En esta sección puedes revisar todas tus sesiones guardadas
@@ -107,13 +116,15 @@ export function DashboardSessionsSection({
         <div className="space-y-4">
           <div className="grid gap-3">
             {visibleSessions.map((session) => (
-              <Link
+              <article
                 key={session.id}
-                href={session.href}
-                className="block rounded-2xl border border-gray-200 bg-bg-main p-4 transition-colors hover:border-accent/60 active:bg-bg-subtle dark:border-white/10 dark:bg-bg-soft"
+                className="rounded-2xl border border-gray-200 bg-bg-main p-4 transition-colors hover:border-accent/60 dark:border-white/10 dark:bg-bg-soft"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
+                  <Link
+                    href={session.href}
+                    className="min-w-0 flex-1 space-y-1 active:text-accent"
+                  >
                     <p className="text-sm text-text-tertiary">
                       {session.fecha}
                     </p>
@@ -123,10 +134,39 @@ export function DashboardSessionsSection({
                     <p className="text-sm text-text-secondary">
                       {session.resumen}
                     </p>
+                  </Link>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <form
+                      action={deleteSesionAction}
+                      onSubmit={(event) => {
+                        if (
+                          !window.confirm(
+                            "¿Eliminar esta sesión? Esta acción no se puede deshacer.",
+                          )
+                        ) {
+                          event.preventDefault();
+                        }
+                      }}
+                    >
+                      <input type="hidden" name="sesionId" value={session.id} />
+                      <input type="hidden" name="cc" value={cc} />
+                      <button
+                        type="submit"
+                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:border-white/10 dark:hover:border-red-500/30 dark:hover:bg-red-950/30 dark:hover:text-red-200"
+                      >
+                        Eliminar
+                      </button>
+                    </form>
+                    <Link
+                      href={session.href}
+                      aria-label={`Abrir ${session.nombre}`}
+                      className="mt-1 text-text-tertiary"
+                    >
+                      ›
+                    </Link>
                   </div>
-                  <span className="mt-1 text-text-tertiary">›</span>
                 </div>
-              </Link>
+              </article>
             ))}
           </div>
 

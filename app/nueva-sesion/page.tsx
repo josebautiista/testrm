@@ -33,9 +33,15 @@ export default async function NuevaSesionPage({
   const resolvedSearchParams = await searchParams;
   const rawCC = resolvedSearchParams.cc;
   const rawError = resolvedSearchParams.error;
+  const rawMacrocicloId = resolvedSearchParams.macrocicloId;
+  const rawReturnTo = resolvedSearchParams.returnTo;
 
   const cc = typeof rawCC === "string" ? rawCC.trim() : "";
   const error = typeof rawError === "string" ? rawError : "";
+  const macrocicloId =
+    typeof rawMacrocicloId === "string" ? rawMacrocicloId.trim() : "";
+  const returnTo =
+    typeof rawReturnTo === "string" ? rawReturnTo.trim() : "";
   const requestId = randomUUID();
 
   if (!cc) {
@@ -83,6 +89,8 @@ export default async function NuevaSesionPage({
         persona={personaSafe}
         ejercicios={ejercicios}
         error={error}
+        macrocicloId={macrocicloId}
+        returnTo={returnTo}
       />
     </main>
   );

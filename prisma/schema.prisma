@@ -20,7 +20,8 @@ model Persona {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sesiones Sesion[]
+  sesiones    Sesion[]
+  macrociclos Macrociclo[]
 
   @@index([createdAt])
 }
@@ -50,7 +51,8 @@ model Sesion {
 
   persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
-  resultados ResultadoEjercicio[]
+  resultados  ResultadoEjercicio[]
+  macrociclos Macrociclo[]
 
   @@index([personaId, createdAt])
 }
@@ -99,4 +101,117 @@ model User {
   username  String   @unique
   password  String
   createdAt DateTime @default(now())
+}
+
+model Macrociclo {
+  id                Int      @id @default(autoincrement())
+  personaId         Int
+  objetivoTipo      String // "salud" | "competencia"
+  objetivoDetalle   String?
+  fechaInicio       DateTime @db.Date
+  fechaFin          DateTime @db.Date
+  fechaCompetencia  DateTime? @db.Date
+  estado            String // "borrador" | "activo" | "cerrado" | "eliminado"
+  pasoActual        Int      @default(1)
+  sesionRmId        Int?
+  rmSnapshot        Json?
+  medidasSnapshot   Json?
+  vo2maxSnapshot    Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  closedAt          DateTime?
+  closedReason      String? // "manual" | "auto_competencia"
+  deletedAt         DateTime?
+
+  persona    Persona              @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sesionRm   Sesion?              @relation(fields: [sesionRmId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  periodos   MacrocicloPeriodo[]
+  mesociclos MacrocicloMesociclo[]
+  semanas    MacrocicloSemana[]
+  auditLogs  MacrocicloAuditLog[]
+
+  @@index([personaId, estado])
+}
+
+model MacrocicloPeriodo {
+  id           Int     @id @default(autoincrement())
+  macrocicloId Int
+  tipo         String // "preparatorio" | "competitivo"
+  porcentaje   Float
+  fechaInicio  DateTime @db.Date
+  fechaFin     DateTime @db.Date
+  orden        Int
+
+  macrociclo Macrociclo        @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  etapas     MacrocicloEtapa[]
+
+  @@index([macrocicloId, orden])
+}
+
+model MacrocicloEtapa {
+  id          Int     @id @default(autoincrement())
+  periodoId   Int
+  tipo        String // "general" | "especifica" | "precompetitiva" | "competitiva"
+  porcentaje  Float
+  fechaInicio DateTime @db.Date
+  fechaFin    DateTime @db.Date
+  orden       Int
+
+  periodo MacrocicloPeriodo @relation(fields: [periodoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([periodoId, orden])
+}
+
+model MacrocicloMesociclo {
+  id           Int     @id @default(autoincrement())
+  macrocicloId Int
+  tipo         String // "entrante" | "desarrollador" | "desarrollador_especifico" | "estabilizador" | "precompetitivo" | "choque" | "aproximacion" | "competencia"
+  porcentaje   Float
+  fechaInicio  DateTime @db.Date
+  fechaFin     DateTime @db.Date
+  orden        Int
+
+  macrociclo Macrociclo        @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  semanas    MacrocicloSemana[]
+
+  @@index([macrocicloId, orden])
+}
+
+model MacrocicloSemana {
+  id             Int     @id @default(autoincrement())
+  macrocicloId   Int
+  mesocicloId    Int
+  numeroSemana   Int
+  mesCalendario  Int
+  fechaInicio    DateTime @db.Date
+  fechaFin       DateTime @db.Date
+  tipoMicrociclo String // "evaluacion" | "corriente" | "competitivo" | "precompetitivo" | "choque" | "recuperacion" | "aproximacion"
+  frecuencia     Int
+  volumen        Float // kilogramos
+  intensidad     Float // 0 a 100
+  notas          String?
+
+  macrociclo Macrociclo          @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  mesociclo  MacrocicloMesociclo  @relation(fields: [mesocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([macrocicloId, numeroSemana])
+  @@index([mesocicloId])
+}
+
+model MacrocicloAuditLog {
+  id           Int      @id @default(autoincrement())
+  macrocicloId Int
+  personaId    Int
+  adminId      String?
+  userType     String // "persona" | "admin"
+  action       String
+  metadata     Json?
+  before       Json?
+  after        Json?
+  createdAt    DateTime @default(now())
+
+  macrociclo Macrociclo @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([macrocicloId, createdAt])
+  @@index([personaId, createdAt])
 }

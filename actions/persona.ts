@@ -70,8 +70,7 @@ function parseCreatePersonaInput(
   const masaCorporal = toFiniteNumber(formData.get("masaCorporal"));
   const edad = toFiniteNumber(formData.get("edad"));
   const talla = toFiniteNumber(formData.get("talla"));
-  const entrenado =
-    formData.get("entrenado") === "on" || formData.get("entrenado") === "true";
+  const entrenado = false;
 
   if (!cc) {
     return { ok: false, error: "El CC es obligatorio." };
