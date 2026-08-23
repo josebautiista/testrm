@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { prisma } from "@/lib/prisma";
@@ -594,24 +595,24 @@ export default async function MacrocicloDetallePage({
           <form action={cerrarMacrocicloAction}>
             <input type="hidden" name="cc" value={cc} />
             <input type="hidden" name="id" value={id} />
-            <PrimaryButton
-              type="submit"
+            <FormSubmitButton
+              pendingLabel="Cerrando..."
               className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
             >
               Cerrar macrociclo
-            </PrimaryButton>
+            </FormSubmitButton>
           </form>
         ) : null}
 
         <form action={eliminarMacrocicloAction}>
           <input type="hidden" name="cc" value={cc} />
           <input type="hidden" name="id" value={id} />
-          <PrimaryButton
-            type="submit"
+          <FormSubmitButton
+            pendingLabel="Eliminando..."
             className="border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-950/30 dark:text-red-200"
           >
             Eliminar macrociclo
-          </PrimaryButton>
+          </FormSubmitButton>
         </form>
 
         <PrimaryButton

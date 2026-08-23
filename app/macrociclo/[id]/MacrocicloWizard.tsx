@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import {
   type ObjetivoTipo,
@@ -111,7 +112,39 @@ type Persona = {
   id: number;
   nombre: string;
   cc: string;
+  masaCorporal: number;
+  talla: number;
+  cintura: number | null;
+  cadera: number | null;
 };
+
+function buildMedidasIniciales(
+  medidasSnapshot: unknown,
+  persona: Pick<Persona, "masaCorporal" | "talla" | "cintura" | "cadera">,
+): Record<string, unknown> {
+  const snapshot = (medidasSnapshot as Record<string, unknown>) ?? {};
+  const medidasBasicasGuardadas =
+    (snapshot.medidasBasicas as Record<string, unknown>) ?? {};
+  const perimetrosGuardados =
+    (snapshot.perimetros as Record<string, unknown>) ?? {};
+
+  const perimetrosBase: Record<string, unknown> = {};
+  if (persona.cintura != null) perimetrosBase.cinturaCm = persona.cintura;
+  if (persona.cadera != null) perimetrosBase.caderaCm = persona.cadera;
+
+  return {
+    ...snapshot,
+    medidasBasicas: {
+      masaCorporalKg: persona.masaCorporal,
+      tallaCm: persona.talla * 100,
+      ...medidasBasicasGuardadas,
+    },
+    perimetros: {
+      ...perimetrosBase,
+      ...perimetrosGuardados,
+    },
+  };
+}
 
 type SesionRm = {
   id: number;
@@ -168,8 +201,8 @@ export function MacrocicloWizard({
     macrociclo.fechaCompetencia ? toISODate(macrociclo.fechaCompetencia) : "",
   );
 
-  const [medidas, setMedidas] = useState<Record<string, unknown>>(
-    (macrociclo.medidasSnapshot as Record<string, unknown>) ?? {},
+  const [medidas, setMedidas] = useState<Record<string, unknown>>(() =>
+    buildMedidasIniciales(macrociclo.medidasSnapshot, persona),
   );
   const [sesionRmId, setSesionRmId] = useState<number | "">(
     macrociclo.sesionRmId ?? "",
@@ -417,7 +450,6 @@ export function MacrocicloWizard({
             medidas={medidas}
             setMedidas={setMedidas}
             buildMedidasConfirmadas={buildMedidasConfirmadas}
-            onGuardar={() => irAPaso(3)}
           />
         );
       case 3:
@@ -428,7 +460,6 @@ export function MacrocicloWizard({
             sesionesRm={sesionesRm}
             sesionRmId={sesionRmId}
             setSesionRmId={setSesionRmId}
-            onGuardar={() => irAPaso(4)}
           />
         );
       case 4:
@@ -444,7 +475,6 @@ export function MacrocicloWizard({
             setDirecto={setVo2Directo}
             legerEtapa={vo2LegerEtapa}
             setLegerEtapa={setVo2LegerEtapa}
-            onGuardar={() => irAPaso(5)}
           />
         );
       case 5:
@@ -738,7 +768,7 @@ function PasoObjetivoFechas({
         )}
       </div>
 
-      <PrimaryButton type="submit">Continuar</PrimaryButton>
+      <FormSubmitButton pendingLabel="Guardando...">Continuar</FormSubmitButton>
     </form>
   );
 }
@@ -749,17 +779,14 @@ function PasoConfirmacionMedidas({
   medidas,
   setMedidas,
   buildMedidasConfirmadas,
-  onGuardar,
 }: {
   cc: string;
   macrocicloId: number;
   medidas: Record<string, unknown>;
   setMedidas: (value: Record<string, unknown>) => void;
   buildMedidasConfirmadas: () => Record<string, unknown>;
-  onGuardar: () => void;
 }) {
   const [actualizarPersona, setActualizarPersona] = useState(true);
-  const [pending, setPending] = useState(false);
 
   function updatePath(path: string, value: string) {
     const keys = path.split(".");
@@ -772,13 +799,6 @@ function PasoConfirmacionMedidas({
     const parsed = value === "" ? "" : Number(value.replace(",", "."));
     current[keys[keys.length - 1]] = parsed;
     setMedidas(next);
-  }
-
-  async function handleSubmit(formData: FormData) {
-    setPending(true);
-    await guardarMedidasAction(formData);
-    setPending(false);
-    onGuardar();
   }
 
   function getByPath(
@@ -816,7 +836,7 @@ function PasoConfirmacionMedidas({
   ];
 
   return (
-    <form action={handleSubmit} className="space-y-5">
+    <form action={guardarMedidasAction} className="space-y-5">
       <input type="hidden" name="cc" value={cc} />
       <input type="hidden" name="id" value={macrocicloId} />
       <input
@@ -880,9 +900,9 @@ function PasoConfirmacionMedidas({
         );
       })}
 
-      <PrimaryButton type="submit" disabled={pending}>
-        {pending ? "Guardando..." : "Guardar y continuar"}
-      </PrimaryButton>
+      <FormSubmitButton pendingLabel="Guardando...">
+        Guardar y continuar
+      </FormSubmitButton>
     </form>
   );
 }

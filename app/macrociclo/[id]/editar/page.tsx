@@ -26,7 +26,15 @@ export default async function EditarMacrocicloPage({
 
   const persona = await prisma.persona.findUnique({
     where: { cc },
-    select: { id: true, nombre: true, cc: true },
+    select: {
+      id: true,
+      nombre: true,
+      cc: true,
+      masaCorporal: true,
+      talla: true,
+      cintura: true,
+      cadera: true,
+    },
   });
 
   if (!persona) {

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { MesocicloCargaEditor } from "@/components/macrociclo/MesocicloCargaEditor";
@@ -48,34 +50,33 @@ type SesionRm = {
   }>;
 };
 
+function UsarSesionRmButton({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <PrimaryButton type="submit" disabled={disabled || pending}>
+      {pending ? "Guardando..." : "Usar sesión seleccionada"}
+    </PrimaryButton>
+  );
+}
+
 export function PasoRm({
   cc,
   macrocicloId,
   sesionesRm,
   sesionRmId,
   setSesionRmId,
-  onGuardar,
 }: {
   cc: string;
   macrocicloId: number;
   sesionesRm: SesionRm[];
   sesionRmId: number | "";
   setSesionRmId: (value: number | "") => void;
-  onGuardar: () => void;
 }) {
-  const [pending, setPending] = useState(false);
-
-  async function handleSubmit(formData: FormData) {
-    setPending(true);
-    await guardarRmAction(formData);
-    setPending(false);
-    onGuardar();
-  }
-
   const sugerida = sesionesRm[0];
 
   return (
-    <form action={handleSubmit} className="space-y-5">
+    <form action={guardarRmAction} className="space-y-5">
       <input type="hidden" name="cc" value={cc} />
       <input type="hidden" name="id" value={macrocicloId} />
       <input type="hidden" name="sesionRmId" value={sesionRmId} />
@@ -141,9 +142,7 @@ export function PasoRm({
       </div>
 
       <div className="space-y-3">
-        <PrimaryButton type="submit" disabled={pending || !sesionRmId}>
-          {pending ? "Guardando..." : "Usar sesión seleccionada"}
-        </PrimaryButton>
+        <UsarSesionRmButton disabled={!sesionRmId} />
 
         <a
           href={`/nueva-sesion?cc=${encodeURIComponent(cc)}&macrocicloId=${macrocicloId}&returnTo=macrociclo`}
@@ -167,7 +166,6 @@ export function PasoVo2max({
   setDirecto,
   legerEtapa,
   setLegerEtapa,
-  onGuardar,
 }: {
   cc: string;
   macrocicloId: number;
@@ -179,19 +177,9 @@ export function PasoVo2max({
   setDirecto: (value: string) => void;
   legerEtapa: string;
   setLegerEtapa: (value: string) => void;
-  onGuardar: () => void;
 }) {
-  const [pending, setPending] = useState(false);
-
-  async function handleSubmit(formData: FormData) {
-    setPending(true);
-    await guardarVo2maxAction(formData);
-    setPending(false);
-    onGuardar();
-  }
-
   return (
-    <form action={handleSubmit} className="space-y-5">
+    <form action={guardarVo2maxAction} className="space-y-5">
       <input type="hidden" name="cc" value={cc} />
       <input type="hidden" name="id" value={macrocicloId} />
       <input type="hidden" name="metodo" value={metodo} />
@@ -302,9 +290,9 @@ export function PasoVo2max({
         </div>
       )}
 
-      <PrimaryButton type="submit" disabled={pending}>
-        {pending ? "Guardando..." : "Guardar VO2Max"}
-      </PrimaryButton>
+      <FormSubmitButton pendingLabel="Guardando...">
+        Guardar VO2Max
+      </FormSubmitButton>
     </form>
   );
 }
@@ -585,6 +573,39 @@ const FORMULAS_RM = [
   { value: "nacleiro", label: "Nacleiro" },
 ] as const;
 
+function getRmValue(resultado: ResultadoRmCompleto, formula: string): number {
+  const value = (resultado as unknown as Record<string, unknown>)[formula];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function FormulaRmSelect({
+  value,
+  resultado,
+  onChange,
+  ariaLabel,
+}: {
+  value: string;
+  resultado: ResultadoRmCompleto | undefined;
+  onChange: (value: string) => void;
+  ariaLabel?: string;
+}) {
+  const options = FORMULAS_RM.map((f) => ({
+    value: f.value,
+    label: resultado
+      ? `${f.label} — ${formatNumber(getRmValue(resultado, f.value))} kg`
+      : f.label,
+  }));
+
+  return (
+    <SearchableSelect
+      value={value}
+      options={options}
+      onChange={onChange}
+      ariaLabel={ariaLabel}
+    />
+  );
+}
+
 export function PasoSemanas({
   cc,
   macrocicloId,
@@ -634,11 +655,6 @@ export function PasoSemanas({
 
   function esAbdominal(nombre: string): boolean {
     return /abdominal/i.test(nombre);
-  }
-
-  function getRmValue(resultado: ResultadoRmCompleto, formula: string): number {
-    const value = (resultado as Record<string, unknown>)[formula];
-    return typeof value === "number" && Number.isFinite(value) ? value : 0;
   }
 
   function getSemanaConfigInicial(): SemanaConfig {
@@ -1072,24 +1088,19 @@ export function PasoSemanas({
                                   {resultado?.ejercicio.nombre ??
                                     `Ejercicio ${ejercicio.ejercicioId}`}
                                 </td>
-                                <td className="px-3 py-2">
-                                  <select
+                                <td className="min-w-[11rem] px-3 py-2">
+                                  <FormulaRmSelect
                                     value={ejercicio.formulaRm}
-                                    onChange={(e) =>
+                                    resultado={resultado}
+                                    onChange={(value) =>
                                       updateFormulaEjercicio(
                                         semana.numeroSemana,
                                         ejercicio.ejercicioId,
-                                        e.target.value,
+                                        value,
                                       )
                                     }
-                                    className="w-full rounded-lg border border-gray-200 bg-bg-main px-2 py-1 text-xs text-text-primary outline-none dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-                                  >
-                                    {FORMULAS_RM.map((f) => (
-                                      <option key={f.value} value={f.value}>
-                                        {f.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    ariaLabel={`Fórmula RM de ${resultado?.ejercicio.nombre ?? `ejercicio ${ejercicio.ejercicioId}`}`}
+                                  />
                                 </td>
                                 <td className="px-3 py-2 text-right text-text-secondary">
                                   {formatNumber(ejercicio.rm)} kg
@@ -1145,7 +1156,9 @@ export function PasoSemanas({
         />
         <input type="hidden" name="semanas" value={JSON.stringify(payload.semanas)} />
 
-        <PrimaryButton type="submit">Guardar periodización y continuar</PrimaryButton>
+        <FormSubmitButton pendingLabel="Guardando periodización...">
+          Guardar periodización y continuar
+        </FormSubmitButton>
       </form>
     </div>
   );
@@ -1300,6 +1313,20 @@ function describirVo2max(
   }
 }
 
+function ActivarMacrocicloButton({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <PrimaryButton
+      type="submit"
+      disabled={disabled || pending}
+      className={disabled ? "opacity-50" : ""}
+    >
+      {pending ? "Activando..." : "Activar macrociclo"}
+    </PrimaryButton>
+  );
+}
+
 export function PasoRevision({
   cc,
   macrocicloId,
@@ -1334,17 +1361,10 @@ export function PasoRevision({
     }[];
   };
 }) {
-  const [pending, setPending] = useState(false);
   const searchParams = useSearchParams();
   const urlError = searchParams.get("error") ?? "";
   const payload = buildPeriodizacionPayload();
   const vo2maxInfo = describirVo2max(vo2maxSnapshot);
-
-  async function handleGuardarPeriodizacion(formData: FormData) {
-    setPending(true);
-    await guardarPeriodizacionAction(formData);
-    setPending(false);
-  }
 
   return (
     <div className="space-y-5">
@@ -1515,7 +1535,7 @@ export function PasoRevision({
         </div>
       </div>
 
-      <form action={handleGuardarPeriodizacion} className="space-y-3">
+      <form action={guardarPeriodizacionAction} className="space-y-3">
         <input type="hidden" name="cc" value={cc} />
         <input type="hidden" name="id" value={macrocicloId} />
         <input type="hidden" name="periodos" value={JSON.stringify(payload.periodos)} />
@@ -1527,21 +1547,15 @@ export function PasoRevision({
         />
         <input type="hidden" name="semanas" value={JSON.stringify(payload.semanas)} />
 
-        <PrimaryButton type="submit" disabled={pending}>
-          {pending ? "Guardando periodización..." : "Guardar periodización"}
-        </PrimaryButton>
+        <FormSubmitButton pendingLabel="Guardando periodización...">
+          Guardar periodización
+        </FormSubmitButton>
       </form>
 
       <form action={activarMacrocicloAction}>
         <input type="hidden" name="cc" value={cc} />
         <input type="hidden" name="id" value={macrocicloId} />
-        <PrimaryButton
-          type="submit"
-          disabled={!sesionRmId}
-          className={!sesionRmId ? "opacity-50" : ""}
-        >
-          Activar macrociclo
-        </PrimaryButton>
+        <ActivarMacrocicloButton disabled={!sesionRmId} />
       </form>
     </div>
   );

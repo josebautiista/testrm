@@ -8,6 +8,7 @@ import { IMCCard } from "@/components/dashboard/IMCCard";
 import { DashboardSessionsSection } from "@/components/dashboard/DashboardSessionsSection";
 import { SummaryMetrics } from "@/components/dashboard/SummaryMetrics";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
+import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
@@ -291,7 +292,9 @@ export default async function DashboardPage({
             </p>
             <form action={iniciarMacrocicloAction}>
               <input type="hidden" name="cc" value={cc} />
-              <PrimaryButton type="submit">Realizar macrociclo</PrimaryButton>
+              <FormSubmitButton pendingLabel="Creando macrociclo...">
+                Realizar macrociclo
+              </FormSubmitButton>
             </form>
           </div>
         )}

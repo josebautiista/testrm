@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { iniciarMacrocicloAction } from "@/actions/macrociclo";
 
@@ -10,6 +11,20 @@ type FloatingActionButtonProps = {
   macrocicloAbiertoId?: number;
   macrocicloAbiertoEstado?: string;
 };
+
+function CrearMacrocicloMenuItem({ className }: { className: string }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className={[className, "disabled:cursor-not-allowed disabled:opacity-50"].join(" ")}
+    >
+      {pending ? "Creando..." : "Crear macrociclo"}
+    </button>
+  );
+}
 
 export function FloatingActionButton({
   cc,
@@ -60,9 +75,7 @@ export function FloatingActionButton({
           ) : (
             <form action={iniciarMacrocicloAction}>
               <input type="hidden" name="cc" value={cc} />
-              <button type="submit" className={menuItemClass}>
-                Crear macrociclo
-              </button>
+              <CrearMacrocicloMenuItem className={menuItemClass} />
             </form>
           )}
           <Link href={newSessionHref} className={menuItemClass} onClick={() => setOpen(false)}>

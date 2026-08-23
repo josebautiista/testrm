@@ -405,121 +405,169 @@ export async function guardarPeriodizacion({
     mesociclos,
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.macrocicloPeriodo.deleteMany({ where: { macrocicloId: id } });
-    await tx.macrocicloMesociclo.deleteMany({ where: { macrocicloId: id } });
-    await tx.macrocicloSemana.deleteMany({ where: { macrocicloId: id } });
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.macrocicloPeriodo.deleteMany({ where: { macrocicloId: id } });
+      await tx.macrocicloMesociclo.deleteMany({ where: { macrocicloId: id } });
+      await tx.macrocicloSemana.deleteMany({ where: { macrocicloId: id } });
 
-    const periodosCreados: Record<string, number> = {};
-    for (const periodo of calculado.periodos) {
-      const creado = await tx.macrocicloPeriodo.create({
-        data: {
-          macrocicloId: id,
-          tipo: periodo.tipo,
-          porcentaje: periodo.porcentaje,
-          fechaInicio: periodo.fechaInicio,
-          fechaFin: periodo.fechaFin,
-          orden: periodo.orden,
-        },
-      });
-      periodosCreados[periodo.tipo] = creado.id;
+      if (calculado.periodos.length > 0) {
+        await tx.macrocicloPeriodo.createMany({
+          data: calculado.periodos.map((periodo) => ({
+            macrocicloId: id,
+            tipo: periodo.tipo,
+            porcentaje: periodo.porcentaje,
+            fechaInicio: periodo.fechaInicio,
+            fechaFin: periodo.fechaFin,
+            orden: periodo.orden,
+          })),
+        });
 
-      for (const etapa of periodo.etapas) {
-        await tx.macrocicloEtapa.create({
-          data: {
-            periodoId: creado.id,
+        const periodosCreados = await tx.macrocicloPeriodo.findMany({
+          where: { macrocicloId: id },
+          select: { id: true, tipo: true },
+        });
+        const periodoIdPorTipo = new Map(
+          periodosCreados.map((p) => [p.tipo, p.id]),
+        );
+
+        const etapasData = calculado.periodos.flatMap((periodo) => {
+          const periodoId = periodoIdPorTipo.get(periodo.tipo);
+          if (!periodoId) return [];
+          return periodo.etapas.map((etapa) => ({
+            periodoId,
             tipo: etapa.tipo,
             porcentaje: etapa.porcentaje,
             fechaInicio: etapa.fechaInicio,
             fechaFin: etapa.fechaFin,
             orden: etapa.orden,
-          },
+          }));
         });
+
+        if (etapasData.length > 0) {
+          await tx.macrocicloEtapa.createMany({ data: etapasData });
+        }
       }
-    }
 
-    const mesociclosCreados: Record<string, number> = {};
-    for (const mesociclo of calculado.mesociclos) {
-      const creado = await tx.macrocicloMesociclo.create({
-        data: {
-          macrocicloId: id,
-          tipo: mesociclo.tipo,
-          porcentaje: mesociclo.porcentaje,
-          fechaInicio: mesociclo.fechaInicio,
-          fechaFin: mesociclo.fechaFin,
-          orden: mesociclo.orden,
-        },
-      });
-      mesociclosCreados[mesociclo.tipo] = creado.id;
-    }
-
-    const semanasMap = new Map(semanas.map((s) => [s.numeroSemana, s]));
-
-    for (const semanaCalculada of calculado.semanas) {
-      const semanaInput = semanasMap.get(semanaCalculada.numeroSemana);
-      const mesocicloId = Object.entries(mesociclosCreados).find(([tipo]) => {
-        const mesociclo = calculado.mesociclos.find((m) => m.tipo === tipo);
-        if (!mesociclo) return false;
-        return (
-          semanaCalculada.fechaInicio >= mesociclo.fechaInicio &&
-          semanaCalculada.fechaInicio <= mesociclo.fechaFin
-        );
-      })?.[1];
-
-      if (!mesocicloId) continue;
-
-      const semanaCreada = await tx.macrocicloSemana.create({
-        data: {
-          macrocicloId: id,
-          mesocicloId,
-          numeroSemana: semanaCalculada.numeroSemana,
-          mesCalendario: semanaCalculada.mesCalendario,
-          fechaInicio: semanaCalculada.fechaInicio,
-          fechaFin: semanaCalculada.fechaFin,
-          tipoMicrociclo: semanaInput?.tipoMicrociclo ?? "corriente",
-          frecuencia: semanaInput?.frecuencia ?? 0,
-          series: semanaInput?.series ?? 0,
-          repeticiones: semanaInput?.repeticiones ?? 0,
-          volumen: semanaInput?.volumen ?? 0,
-          intensidad: semanaInput?.intensidad ?? 0,
-          notas: semanaInput?.notas,
-        },
-      });
-
-      if (semanaInput?.ejercicios && semanaInput.ejercicios.length > 0) {
-        await tx.macrocicloSemanaEjercicio.createMany({
-          data: semanaInput.ejercicios.map((e) => ({
-            macrocicloSemanaId: semanaCreada.id,
-            ejercicioId: e.ejercicioId,
-            formulaRm: e.formulaRm,
-            rm: e.rm,
-            peso: e.peso,
-            volumen: e.volumen,
+      const mesocicloIdPorTipo = new Map<string, number>();
+      if (calculado.mesociclos.length > 0) {
+        await tx.macrocicloMesociclo.createMany({
+          data: calculado.mesociclos.map((mesociclo) => ({
+            macrocicloId: id,
+            tipo: mesociclo.tipo,
+            porcentaje: mesociclo.porcentaje,
+            fechaInicio: mesociclo.fechaInicio,
+            fechaFin: mesociclo.fechaFin,
+            orden: mesociclo.orden,
           })),
         });
+
+        const mesociclosCreados = await tx.macrocicloMesociclo.findMany({
+          where: { macrocicloId: id },
+          select: { id: true, tipo: true },
+        });
+        for (const m of mesociclosCreados) {
+          mesocicloIdPorTipo.set(m.tipo, m.id);
+        }
       }
-    }
 
-    await tx.macrociclo.update({
-      where: { id },
-      data: { pasoActual: Math.max(pasoActual, 9) },
-    });
+      const semanasMap = new Map(semanas.map((s) => [s.numeroSemana, s]));
 
-    await tx.macrocicloAuditLog.create({
-      data: {
-        macrocicloId: id,
-        personaId,
-        adminId: context.adminId,
-        userType: context.userType,
-        action: "periodizacion_guardada",
-        metadata: {
-          totalSemanas: calculado.totalSemanas,
-          periodos: calculado.periodos.length,
-          mesociclos: calculado.mesociclos.length,
+      const semanasData = calculado.semanas.flatMap((semanaCalculada) => {
+        const mesocicloId = [...mesocicloIdPorTipo.entries()].find(
+          ([tipo]) => {
+            const mesociclo = calculado.mesociclos.find(
+              (m) => m.tipo === tipo,
+            );
+            if (!mesociclo) return false;
+            return (
+              semanaCalculada.fechaInicio >= mesociclo.fechaInicio &&
+              semanaCalculada.fechaInicio <= mesociclo.fechaFin
+            );
+          },
+        )?.[1];
+
+        if (!mesocicloId) return [];
+
+        const semanaInput = semanasMap.get(semanaCalculada.numeroSemana);
+
+        return [
+          {
+            macrocicloId: id,
+            mesocicloId,
+            numeroSemana: semanaCalculada.numeroSemana,
+            mesCalendario: semanaCalculada.mesCalendario,
+            fechaInicio: semanaCalculada.fechaInicio,
+            fechaFin: semanaCalculada.fechaFin,
+            tipoMicrociclo: semanaInput?.tipoMicrociclo ?? "corriente",
+            frecuencia: semanaInput?.frecuencia ?? 0,
+            series: semanaInput?.series ?? 0,
+            repeticiones: semanaInput?.repeticiones ?? 0,
+            volumen: semanaInput?.volumen ?? 0,
+            intensidad: semanaInput?.intensidad ?? 0,
+            notas: semanaInput?.notas,
+          },
+        ];
+      });
+
+      if (semanasData.length > 0) {
+        await tx.macrocicloSemana.createMany({ data: semanasData });
+
+        const semanasCreadas = await tx.macrocicloSemana.findMany({
+          where: { macrocicloId: id },
+          select: { id: true, numeroSemana: true },
+        });
+        const semanaIdPorNumero = new Map(
+          semanasCreadas.map((s) => [s.numeroSemana, s.id]),
+        );
+
+        const ejerciciosData = calculado.semanas.flatMap(
+          (semanaCalculada) => {
+            const semanaInput = semanasMap.get(semanaCalculada.numeroSemana);
+            const semanaId = semanaIdPorNumero.get(
+              semanaCalculada.numeroSemana,
+            );
+            if (!semanaId || !semanaInput?.ejercicios?.length) return [];
+            return semanaInput.ejercicios.map((e) => ({
+              macrocicloSemanaId: semanaId,
+              ejercicioId: e.ejercicioId,
+              formulaRm: e.formulaRm,
+              rm: e.rm,
+              peso: e.peso,
+              volumen: e.volumen,
+            }));
+          },
+        );
+
+        if (ejerciciosData.length > 0) {
+          await tx.macrocicloSemanaEjercicio.createMany({
+            data: ejerciciosData,
+          });
+        }
+      }
+
+      await tx.macrociclo.update({
+        where: { id },
+        data: { pasoActual: Math.max(pasoActual, 9) },
+      });
+
+      await tx.macrocicloAuditLog.create({
+        data: {
+          macrocicloId: id,
+          personaId,
+          adminId: context.adminId,
+          userType: context.userType,
+          action: "periodizacion_guardada",
+          metadata: {
+            totalSemanas: calculado.totalSemanas,
+            periodos: calculado.periodos.length,
+            mesociclos: calculado.mesociclos.length,
+          },
         },
-      },
-    });
-  });
+      });
+    },
+    { timeout: 20000, maxWait: 10000 },
+  );
 
   return calculado;
 }

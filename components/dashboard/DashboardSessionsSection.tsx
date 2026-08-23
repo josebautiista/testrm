@@ -2,9 +2,24 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { deleteSesionAction } from "@/actions/sesion";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+
+function EliminarSesionButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:border-red-500/30 dark:hover:bg-red-950/30 dark:hover:text-red-200"
+    >
+      {pending ? "Eliminando..." : "Eliminar"}
+    </button>
+  );
+}
 
 type DashboardSession = {
   id: number;
@@ -150,12 +165,7 @@ export function DashboardSessionsSection({
                     >
                       <input type="hidden" name="sesionId" value={session.id} />
                       <input type="hidden" name="cc" value={cc} />
-                      <button
-                        type="submit"
-                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:border-white/10 dark:hover:border-red-500/30 dark:hover:bg-red-950/30 dark:hover:text-red-200"
-                      >
-                        Eliminar
-                      </button>
+                      <EliminarSesionButton />
                     </form>
                     <Link
                       href={session.href}
