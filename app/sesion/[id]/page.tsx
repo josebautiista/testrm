@@ -218,11 +218,7 @@ export default async function SesionDetailPage({
             value={`${sesion.trainingMonths} meses`}
             compact
           />
-          <MetricRow
-            label="RM final"
-            value={globalRM > 0 ? `${formatNumber(globalRM)} kg` : "Pendiente"}
-            compact
-          />
+    
           {sesion.resultados.length > 0 ? (
             <MetricRow
               label="Indice de fuerza"

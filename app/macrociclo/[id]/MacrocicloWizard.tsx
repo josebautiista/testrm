@@ -17,10 +17,10 @@ import {
   toISODate,
 } from "@/lib/macrociclo";
 import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
+import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import {
   guardarPasoObjetivoFechasAction,
   guardarMedidasAction,
-  procesarPdfAntropometriaAction,
 } from "@/actions/macrociclo";
 import {
   PasoRm,
@@ -29,6 +29,7 @@ import {
   PasoEtapas,
   PasoMesociclos,
   PasoSemanas,
+  PasoCarga,
   PasoRevision,
 } from "./wizard-steps";
 
@@ -39,16 +40,48 @@ type MacrocicloPeriodo = {
 };
 
 type MacrocicloMesociclo = {
+  id: number;
   tipo: string;
   porcentaje: number;
+  fechaInicio: Date;
+  fechaFin: Date;
+  orden: number;
+  semanas: Array<{ numeroSemana: number; frecuencia: number; fechaInicio: Date; fechaFin: Date }>;
+  carga: unknown;
+};
+
+type SemanaEjercicio = {
+  ejercicioId: number;
+  formulaRm: string;
+  rm: number;
+  peso: number;
+  volumen: number;
 };
 
 type MacrocicloSemana = {
   numeroSemana: number;
   tipoMicrociclo: string;
   frecuencia: number;
+  series: number;
+  repeticiones: number;
   volumen: number;
   intensidad: number;
+  ejercicios: SemanaEjercicio[];
+};
+
+type ResultadoRm = {
+  ejercicioId: number;
+  ejercicio: { nombre: string };
+  epley: number;
+  brzycki: number;
+  lombardi: number;
+  lander: number;
+  oconnor: number;
+  mayhew: number;
+  wathen: number;
+  baechle: number;
+  casas: number;
+  nacleiro: number;
 };
 
 type MacrocicloWithRelations = {
@@ -68,6 +101,10 @@ type MacrocicloWithRelations = {
   periodos: MacrocicloPeriodo[];
   mesociclos: MacrocicloMesociclo[];
   semanas: MacrocicloSemana[];
+  sesionRm?: {
+    id: number;
+    resultados: ResultadoRm[];
+  } | null;
 };
 
 type Persona = {
@@ -93,14 +130,14 @@ type SesionRm = {
 
 const PASOS = [
   { numero: 1, label: "Objetivo" },
-  { numero: 2, label: "PDF" },
-  { numero: 3, label: "Medidas" },
-  { numero: 4, label: "RM" },
-  { numero: 5, label: "VO2Max" },
-  { numero: 6, label: "Periodos" },
-  { numero: 7, label: "Etapas" },
-  { numero: 8, label: "Mesociclos" },
-  { numero: 9, label: "Semanas" },
+  { numero: 2, label: "Medidas" },
+  { numero: 3, label: "RM" },
+  { numero: 4, label: "VO2Max" },
+  { numero: 5, label: "Periodos" },
+  { numero: 6, label: "Etapas" },
+  { numero: 7, label: "Mesociclos" },
+  { numero: 8, label: "Semanas" },
+  { numero: 9, label: "Carga" },
   { numero: 10, label: "Revisión" },
 ];
 
@@ -134,17 +171,27 @@ export function MacrocicloWizard({
   const [medidas, setMedidas] = useState<Record<string, unknown>>(
     (macrociclo.medidasSnapshot as Record<string, unknown>) ?? {},
   );
-  const [pdfProcessing, setPdfProcessing] = useState(false);
-  const [pdfError, setPdfError] = useState("");
-
   const [sesionRmId, setSesionRmId] = useState<number | "">(
     macrociclo.sesionRmId ?? "",
   );
 
-  const [vo2Metodo, setVo2Metodo] = useState<string>("cooper");
-  const [vo2CooperDistancia, setVo2CooperDistancia] = useState("");
-  const [vo2Directo, setVo2Directo] = useState("");
-  const [vo2LegerEtapa, setVo2LegerEtapa] = useState("");
+  const vo2maxInicial =
+    (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null;
+
+  const [vo2Metodo, setVo2Metodo] = useState<string>(
+    vo2maxInicial?.metodo ?? "cooper",
+  );
+  const [vo2CooperDistancia, setVo2CooperDistancia] = useState(
+    vo2maxInicial?.metodo === "cooper"
+      ? String(vo2maxInicial.distanciaMetros)
+      : "",
+  );
+  const [vo2Directo, setVo2Directo] = useState(
+    vo2maxInicial?.metodo === "directo" ? String(vo2maxInicial.valor) : "",
+  );
+  const [vo2LegerEtapa, setVo2LegerEtapa] = useState(
+    vo2maxInicial?.metodo === "leger" ? String(vo2maxInicial.etapa) : "",
+  );
 
   const [periodos, setPeriodos] = useState<Record<TipoPeriodo, number | "">>(() => {
     const saved: Partial<Record<TipoPeriodo, number>> = {};
@@ -211,8 +258,11 @@ export function MacrocicloWizard({
       {
         tipoMicrociclo: TipoMicrociclo;
         frecuencia: number | "";
+        series: number | "";
+        repeticiones: number | "";
         volumen: number | "";
         intensidad: number | "";
+        ejercicios: SemanaEjercicio[];
       }
     >
   >(() => {
@@ -221,17 +271,28 @@ export function MacrocicloWizard({
       {
         tipoMicrociclo: TipoMicrociclo;
         frecuencia: number | "";
+        series: number | "";
+        repeticiones: number | "";
         volumen: number | "";
         intensidad: number | "";
+        ejercicios: SemanaEjercicio[];
       }
     > = {};
     for (const s of macrociclo.semanas) {
-      const tipo = s.tipoMicrociclo as TipoMicrociclo;
       saved[s.numeroSemana] = {
-        tipoMicrociclo: tipo,
+        tipoMicrociclo: s.tipoMicrociclo as TipoMicrociclo,
         frecuencia: s.frecuencia,
+        series: s.series,
+        repeticiones: s.repeticiones,
         volumen: s.volumen,
         intensidad: s.intensidad,
+        ejercicios: (s.ejercicios ?? []).map((e) => ({
+          ejercicioId: e.ejercicioId,
+          formulaRm: e.formulaRm,
+          rm: e.rm,
+          peso: e.peso,
+          volumen: e.volumen,
+        })),
       };
     }
     return saved;
@@ -245,21 +306,6 @@ export function MacrocicloWizard({
 
   async function handleObjetivoSubmit(formData: FormData) {
     await guardarPasoObjetivoFechasAction(formData);
-  }
-
-  async function handleProcesarPdf(formData: FormData) {
-    setPdfProcessing(true);
-    setPdfError("");
-    const result = await procesarPdfAntropometriaAction(formData);
-    setPdfProcessing(false);
-
-    if (!result.success) {
-      setPdfError(result.error);
-      return;
-    }
-
-    setMedidas(result.medidas as Record<string, unknown>);
-    irAPaso(3);
   }
 
   function sanitizeMedidas(value: unknown): unknown {
@@ -322,8 +368,17 @@ export function MacrocicloWizard({
       numeroSemana: s.numeroSemana,
       tipoMicrociclo: semanasConfig[s.numeroSemana]?.tipoMicrociclo ?? "corriente",
       frecuencia: Number(semanasConfig[s.numeroSemana]?.frecuencia ?? 0),
+      series: Number(semanasConfig[s.numeroSemana]?.series ?? 0),
+      repeticiones: Number(semanasConfig[s.numeroSemana]?.repeticiones ?? 0),
       volumen: Number(semanasConfig[s.numeroSemana]?.volumen ?? 0),
       intensidad: Number(semanasConfig[s.numeroSemana]?.intensidad ?? 0),
+      ejercicios: (semanasConfig[s.numeroSemana]?.ejercicios ?? []).map((e) => ({
+        ejercicioId: e.ejercicioId,
+        formulaRm: e.formulaRm,
+        rm: e.rm,
+        peso: e.peso,
+        volumen: e.volumen,
+      })),
     }));
 
     return {
@@ -356,27 +411,16 @@ export function MacrocicloWizard({
         );
       case 2:
         return (
-          <PasoCargaPdf
-            cc={persona.cc}
-            macrocicloId={macrociclo.id}
-            processing={pdfProcessing}
-            error={pdfError}
-            onSubmit={handleProcesarPdf}
-            onSaltar={() => irAPaso(4)}
-          />
-        );
-      case 3:
-        return (
           <PasoConfirmacionMedidas
             cc={persona.cc}
             macrocicloId={macrociclo.id}
             medidas={medidas}
             setMedidas={setMedidas}
             buildMedidasConfirmadas={buildMedidasConfirmadas}
-            onGuardar={() => irAPaso(4)}
+            onGuardar={() => irAPaso(3)}
           />
         );
-      case 4:
+      case 3:
         return (
           <PasoRm
             cc={persona.cc}
@@ -384,10 +428,10 @@ export function MacrocicloWizard({
             sesionesRm={sesionesRm}
             sesionRmId={sesionRmId}
             setSesionRmId={setSesionRmId}
-            onGuardar={() => irAPaso(5)}
+            onGuardar={() => irAPaso(4)}
           />
         );
-      case 5:
+      case 4:
         return (
           <PasoVo2max
             cc={persona.cc}
@@ -400,34 +444,34 @@ export function MacrocicloWizard({
             setDirecto={setVo2Directo}
             legerEtapa={vo2LegerEtapa}
             setLegerEtapa={setVo2LegerEtapa}
-            onGuardar={() => irAPaso(6)}
+            onGuardar={() => irAPaso(5)}
           />
         );
-      case 6:
+      case 5:
         return (
           <PasoPeriodos
             periodos={periodos}
             setPeriodos={setPeriodos}
+            onContinuar={() => irAPaso(6)}
+          />
+        );
+      case 6:
+        return (
+          <PasoEtapas
+            etapas={etapas}
+            setEtapas={setEtapas}
             onContinuar={() => irAPaso(7)}
           />
         );
       case 7:
         return (
-          <PasoEtapas
-            etapas={etapas}
-            setEtapas={setEtapas}
+          <PasoMesociclos
+            mesociclos={mesociclos}
+            setMesociclos={setMesociclos}
             onContinuar={() => irAPaso(8)}
           />
         );
       case 8:
-        return (
-          <PasoMesociclos
-            mesociclos={mesociclos}
-            setMesociclos={setMesociclos}
-            onContinuar={() => irAPaso(9)}
-          />
-        );
-      case 9:
         return (
           <PasoSemanas
             cc={persona.cc}
@@ -456,7 +500,20 @@ export function MacrocicloWizard({
             setSemanasConfig={setSemanasConfig}
             semanasSeleccionadas={semanasSeleccionadas}
             setSemanasSeleccionadas={setSemanasSeleccionadas}
+            resultadosRm={macrociclo.sesionRm?.resultados ?? []}
             buildPeriodizacionPayload={buildPeriodizacionPayload}
+            onContinuar={() => irAPaso(9)}
+          />
+        );
+      case 9:
+        return (
+          <PasoCarga
+            cc={persona.cc}
+            macrocicloId={macrociclo.id}
+            mesociclos={macrociclo.mesociclos.map((m) => ({
+              ...m,
+              carga: m.carga as CargaMesocicloInputData | null,
+            }))}
             onContinuar={() => irAPaso(10)}
           />
         );
@@ -472,6 +529,10 @@ export function MacrocicloWizard({
             vo2maxSnapshot={
               (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null
             }
+            mesociclos={macrociclo.mesociclos.map((m) => ({
+              ...m,
+              carga: m.carga as CargaMesocicloInputData | null,
+            }))}
             buildPeriodizacionPayload={buildPeriodizacionPayload}
           />
         );
@@ -530,7 +591,7 @@ export function MacrocicloWizard({
           ← Atrás
         </button>
         <span className="text-sm text-text-secondary">
-          Paso {paso} de 10
+          Paso {paso} de 11
         </span>
       </div>
 
@@ -679,65 +740,6 @@ function PasoObjetivoFechas({
 
       <PrimaryButton type="submit">Continuar</PrimaryButton>
     </form>
-  );
-}
-
-function PasoCargaPdf({
-  cc,
-  macrocicloId,
-  processing,
-  error,
-  onSubmit,
-  onSaltar,
-}: {
-  cc: string;
-  macrocicloId: number;
-  processing: boolean;
-  error: string;
-  onSubmit: (formData: FormData) => Promise<void>;
-  onSaltar: () => void;
-}) {
-  return (
-    <div className="space-y-5">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-text-primary dark:text-white">
-          Evaluación antropométrica
-        </h2>
-        <p className="text-sm text-text-secondary">
-          Carga un PDF de ISAK con tu evaluación antropométrica. No guardaremos el
-          archivo, solo extraeremos los datos para que los confirmes. 
-        </p>
-      </div>
-
-      {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-950/30 dark:text-red-200">
-          {error}
-        </div>
-      ) : null}
-
-      <form action={onSubmit} className="space-y-4">
-        <input type="hidden" name="cc" value={cc} />
-        <input type="hidden" name="id" value={macrocicloId} />
-        <input
-          type="file"
-          name="archivo"
-          accept="application/pdf"
-          required
-          className="block w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-sm text-text-primary file:mr-4 file:rounded-xl file:border-0 file:bg-accent file:px-4 file:py-2 file:text-white dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-        />
-        <PrimaryButton type="submit" disabled={processing}>
-          {processing ? "Procesando PDF..." : "Extraer datos del PDF"}
-        </PrimaryButton>
-      </form>
-
-      <button
-        type="button"
-        onClick={onSaltar}
-        className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-sm font-medium text-text-secondary transition hover:bg-bg-subtle dark:border-white/10 dark:bg-bg-subtle dark:text-text-secondary"
-      >
-        Omitir este paso
-      </button>
-    </div>
   );
 }
 

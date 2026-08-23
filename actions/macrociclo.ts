@@ -26,11 +26,13 @@ import {
   crearORecuperarBorrador,
   eliminarMacrociclo,
   guardarMedidasSnapshot,
-  guardarPeriodizacion,
   guardarPasoObjetivoFechas,
+  guardarPeriodizacion,
   guardarRmSnapshot,
   guardarVo2maxSnapshot,
+  guardarCargaMesociclo,
 } from "@/services/macrociclo.service";
+import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 
 function getContext() {
   return { userType: "persona" as const };
@@ -155,7 +157,7 @@ export async function guardarMedidasAction(formData: FormData) {
     redirectToWizard(cc, id, 3);
   }
 
-  if (!medidas) redirectToWizard(cc, id, 3);
+  if (!medidas) redirectToWizard(cc, id, 2);
 
   const macrociclo = await prisma.macrociclo.findUnique({
     where: { id, personaId: persona.id },
@@ -171,7 +173,7 @@ export async function guardarMedidasAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 4);
+  redirectToWizard(cc, id, 3);
 }
 
 export async function guardarRmAction(formData: FormData) {
@@ -195,7 +197,7 @@ export async function guardarRmAction(formData: FormData) {
     },
   });
 
-  if (!sesion) redirectToWizard(cc, id, 4);
+  if (!sesion) redirectToWizard(cc, id, 3);
 
   const rmSnapshot = {
     sesionId: sesion.id,
@@ -211,6 +213,14 @@ export async function guardarRmAction(formData: FormData) {
       carga: r.carga,
       epley: r.epley,
       brzycki: r.brzycki,
+      lombardi: r.lombardi,
+      lander: r.lander,
+      oconnor: r.oconnor,
+      mayhew: r.mayhew,
+      wathen: r.wathen,
+      baechle: r.baechle,
+      casas: r.casas,
+      nacleiro: r.nacleiro,
     })),
   };
 
@@ -228,7 +238,7 @@ export async function guardarRmAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 5);
+  redirectToWizard(cc, id, 4);
 }
 
 export async function guardarVo2maxAction(formData: FormData) {
@@ -245,18 +255,18 @@ export async function guardarVo2maxAction(formData: FormData) {
 
   if (metodo === "cooper") {
     const distancia = getNumber(formData, "distanciaMetros");
-    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 5);
+    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 4);
     const valor = (distancia - 504.9) / 44.73;
     vo2max = { metodo, distanciaMetros: distancia, valor };
   } else if (metodo === "directo") {
     const valor = getNumber(formData, "valor");
-    if (!valor || valor <= 0) redirectToWizard(cc, id, 5);
+    if (!valor || valor <= 0) redirectToWizard(cc, id, 4);
     vo2max = { metodo, valor };
   } else {
     const etapa = getNumber(formData, "etapa");
 
     if (!etapa || etapa < 1 || !Number.isInteger(etapa)) {
-      redirectToWizard(cc, id, 5);
+      redirectToWizard(cc, id, 4);
     }
 
     const etapaFinal = etapa as number;
@@ -281,7 +291,7 @@ export async function guardarVo2maxAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 6);
+  redirectToWizard(cc, id, 5);
 }
 
 type PeriodizacionPayload = {
@@ -349,7 +359,8 @@ async function parsePeriodizacionFormData(
     (s) =>
       Number.isInteger(s.numeroSemana) &&
       s.numeroSemana > 0 &&
-      isTipoMicrociclo(s.tipoMicrociclo),
+      isTipoMicrociclo(s.tipoMicrociclo) &&
+      Array.isArray(s.ejercicios),
   );
 
   const macrociclo = await prisma.macrociclo.findUnique({
@@ -400,7 +411,7 @@ export async function guardarPeriodizacionAction(formData: FormData) {
     );
   }
 
-  redirectToWizard(result.cc, result.id, 10);
+  redirectToWizard(result.cc, result.id, 9);
 }
 
 export async function guardarPeriodizacionSinRedirectAction(
@@ -475,6 +486,54 @@ export async function eliminarMacrocicloAction(formData: FormData) {
   redirect(`/dashboard?cc=${encodeURIComponent(cc)}`);
 }
 
+export async function guardarCargaMesocicloAction(
+  formData: FormData,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const cc = getString(formData, "cc");
+  const id = getInt(formData, "id");
+  const mesocicloId = getInt(formData, "mesocicloId");
+  const cargaRaw = getString(formData, "carga");
+
+  if (!cc || !id || !mesocicloId || !cargaRaw) {
+    return { success: false, error: "Faltan datos para guardar la carga." };
+  }
+
+  const persona = await getPersona(cc);
+  if (!persona) {
+    return { success: false, error: "Persona no encontrada." };
+  }
+
+  let carga: CargaMesocicloInputData | null = null;
+  try {
+    carga = JSON.parse(cargaRaw) as CargaMesocicloInputData;
+  } catch {
+    return { success: false, error: "Formato de datos inválido." };
+  }
+
+  if (!carga) {
+    return { success: false, error: "Formato de datos inválido." };
+  }
+
+  try {
+    await guardarCargaMesociclo({
+      macrocicloId: id,
+      personaId: persona.id,
+      mesocicloId,
+      data: carga,
+      context: getContext(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "No fue posible guardar la carga del mesociclo.";
+
+    return { success: false, error: message };
+  }
+}
+
 export async function procesarPdfAntropometriaAction(
   formData: FormData,
 ): Promise<
@@ -494,15 +553,8 @@ export async function procesarPdfAntropometriaAction(
     return { success: false, error: "Persona no encontrada." };
   }
 
-  const macrociclo = await prisma.macrociclo.findUnique({
-    where: { id, personaId: persona.id },
-  });
-  if (!macrociclo) {
-    return { success: false, error: "Macrociclo no encontrado." };
-  }
-
-  if (!(archivo instanceof File) || archivo.size === 0) {
-    return { success: false, error: "Debes seleccionar un archivo PDF." };
+  if (!archivo || !(archivo instanceof File)) {
+    return { success: false, error: "No se recibió un archivo válido." };
   }
 
   try {

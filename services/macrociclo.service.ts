@@ -12,6 +12,10 @@ import {
   type Vo2maxSnapshot,
 } from "@/lib/macrociclo";
 import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
+import {
+  type CargaMesocicloInputData,
+  validarCargaMesociclo,
+} from "@/lib/mesociclo-carga";
 
 export type AuditContext = {
   userType: "persona" | "admin";
@@ -262,7 +266,7 @@ export async function guardarMedidasSnapshot({
       where: { id, personaId },
       data: {
         medidasSnapshot: medidas as Prisma.InputJsonValue,
-        pasoActual: Math.max(pasoActual, 4),
+        pasoActual: Math.max(pasoActual, 3),
       },
     });
 
@@ -319,7 +323,7 @@ export async function guardarRmSnapshot({
     data: {
       sesionRmId,
       rmSnapshot: rmSnapshot as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 5),
+      pasoActual: Math.max(pasoActual, 4),
     },
   });
 
@@ -351,7 +355,7 @@ export async function guardarVo2maxSnapshot({
     where: { id, personaId },
     data: {
       vo2maxSnapshot: vo2max as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 6),
+      pasoActual: Math.max(pasoActual, 5),
     },
   });
 
@@ -464,7 +468,7 @@ export async function guardarPeriodizacion({
 
       if (!mesocicloId) continue;
 
-      await tx.macrocicloSemana.create({
+      const semanaCreada = await tx.macrocicloSemana.create({
         data: {
           macrocicloId: id,
           mesocicloId,
@@ -474,16 +478,31 @@ export async function guardarPeriodizacion({
           fechaFin: semanaCalculada.fechaFin,
           tipoMicrociclo: semanaInput?.tipoMicrociclo ?? "corriente",
           frecuencia: semanaInput?.frecuencia ?? 0,
+          series: semanaInput?.series ?? 0,
+          repeticiones: semanaInput?.repeticiones ?? 0,
           volumen: semanaInput?.volumen ?? 0,
           intensidad: semanaInput?.intensidad ?? 0,
           notas: semanaInput?.notas,
         },
       });
+
+      if (semanaInput?.ejercicios && semanaInput.ejercicios.length > 0) {
+        await tx.macrocicloSemanaEjercicio.createMany({
+          data: semanaInput.ejercicios.map((e) => ({
+            macrocicloSemanaId: semanaCreada.id,
+            ejercicioId: e.ejercicioId,
+            formulaRm: e.formulaRm,
+            rm: e.rm,
+            peso: e.peso,
+            volumen: e.volumen,
+          })),
+        });
+      }
     }
 
     await tx.macrociclo.update({
       where: { id },
-      data: { pasoActual: Math.max(pasoActual, 10) },
+      data: { pasoActual: Math.max(pasoActual, 9) },
     });
 
     await tx.macrocicloAuditLog.create({
@@ -570,8 +589,23 @@ export async function obtenerMacrocicloPorId(id: number) {
           etapas: { orderBy: { orden: "asc" } },
         },
       },
-      mesociclos: { orderBy: { orden: "asc" } },
-      semanas: { orderBy: { numeroSemana: "asc" } },
+      mesociclos: {
+        orderBy: { orden: "asc" },
+        include: {
+          semanas: { orderBy: { numeroSemana: "asc" } },
+          carga: true,
+        },
+      },
+      semanas: {
+        orderBy: { numeroSemana: "asc" },
+        include: {
+          ejercicios: {
+            include: {
+              ejercicio: { select: { id: true, nombre: true } },
+            },
+          },
+        },
+      },
       auditLogs: { orderBy: { createdAt: "desc" } },
     },
   });
@@ -623,4 +657,77 @@ export async function obtenerMacrociclosAdmin({
       mesociclos: { orderBy: { orden: "asc" } },
     },
   });
+}
+
+export async function obtenerCargaMesociclo(mesocicloId: number) {
+  return prisma.mesocicloCarga.findUnique({
+    where: { mesocicloId },
+  });
+}
+
+export async function guardarCargaMesociclo({
+  macrocicloId,
+  personaId,
+  mesocicloId,
+  data,
+  context,
+}: {
+  macrocicloId: number;
+  personaId: number;
+  mesocicloId: number;
+  data: CargaMesocicloInputData;
+  context: AuditContext;
+}) {
+  const mesociclo = await prisma.macrocicloMesociclo.findFirst({
+    where: { id: mesocicloId, macrocicloId, macrociclo: { personaId } },
+    include: {
+      macrociclo: { select: { id: true, personaId: true } },
+      semanas: true,
+    },
+  });
+
+  if (!mesociclo) {
+    throw new Error("Mesociclo no encontrado.");
+  }
+
+  const semanas = mesociclo.semanas.map((s) => ({
+    numeroSemana: s.numeroSemana,
+    frecuencia: s.frecuencia,
+  }));
+
+  const validado = validarCargaMesociclo(data, semanas);
+  if (!validado.ok) {
+    throw new Error(validado.error);
+  }
+
+  const actualizado = await prisma.mesocicloCarga.upsert({
+    where: { mesocicloId },
+    create: {
+      mesocicloId,
+      tiempoSesionMin: validado.data.tiempoSesionMin,
+      direcciones: validado.data.direcciones as Prisma.InputJsonValue,
+      volumen: validado.data.volumen as Prisma.InputJsonValue,
+      microciclos: validado.data.microciclos as Prisma.InputJsonValue,
+      sesiones: validado.data.sesiones as Prisma.InputJsonValue,
+    },
+    update: {
+      tiempoSesionMin: validado.data.tiempoSesionMin,
+      direcciones: validado.data.direcciones as Prisma.InputJsonValue,
+      volumen: validado.data.volumen as Prisma.InputJsonValue,
+      microciclos: validado.data.microciclos as Prisma.InputJsonValue,
+      sesiones: validado.data.sesiones as Prisma.InputJsonValue,
+    },
+  });
+
+  await auditarMacrociclo({
+    macrocicloId,
+    personaId,
+    action: "carga_mesociclo_guardada",
+    metadata: { mesocicloId },
+    before: undefined,
+    after: validado.data as Record<string, unknown>,
+    context,
+  });
+
+  return actualizado;
 }

@@ -5,6 +5,7 @@ import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
 import { createPersona as createPersonaService } from "@/services/persona.service";
+import { updateMedidasBasicas } from "@/services/persona.service";
 
 export type EntryState = {
   error: string | null;
@@ -15,6 +16,13 @@ export type EntryState = {
 export type RegistroState = {
   error: string | null;
   redirectTo: string | null;
+};
+
+export type MedidasBasicasState = {
+  error: string | null;
+  success: boolean;
+  masaCorporal: number | null;
+  talla: number | null;
 };
 
 type CreatePersonaInput = {
@@ -217,4 +225,44 @@ export async function createPersonaAction(
   }
 
   redirect(`/dashboard?cc=${encodeURIComponent(result.cc)}`);
+}
+
+export async function actualizarMedidasBasicasAction(
+  _prevState: MedidasBasicasState,
+  formData: FormData,
+): Promise<MedidasBasicasState> {
+  const cc = normalizeCC(getString(formData.get("cc")));
+
+  if (!cc) {
+    return {
+      error: "Debes enviar el CC de la persona.",
+      success: false,
+      masaCorporal: null,
+      talla: null,
+    };
+  }
+
+  const masaCorporal = toFiniteNumber(formData.get("masaCorporal"));
+  const talla = toFiniteNumber(formData.get("talla"));
+
+  try {
+    const persona = await updateMedidasBasicas(cc, { masaCorporal, talla });
+
+    return {
+      error: null,
+      success: true,
+      masaCorporal: persona.masaCorporal,
+      talla: persona.talla,
+    };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "No fue posible actualizar los datos. Intenta nuevamente.",
+      success: false,
+      masaCorporal: null,
+      talla: null,
+    };
+  }
 }

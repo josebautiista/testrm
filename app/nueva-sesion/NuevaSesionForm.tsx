@@ -200,8 +200,7 @@ export function NuevaSesionForm({
             </label>
             {!canUseAdvancedMethods ? (
               <div className="rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-sm text-text-secondary dark:border-white/10">
-                Elige un peso que puedas controlar durante 5-8 repeticiones con
-                buena técnica. No necesitas levantar al límite.
+                Realiza la mayor cantidad de repeticiones con el peso sugerido por la aplicación para cada ejercicio.ñ
               </div>
             ) : null}
           </Section>

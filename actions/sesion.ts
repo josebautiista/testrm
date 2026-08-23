@@ -533,7 +533,7 @@ export async function createSesionAction(formData: FormData) {
     result?.sesionId
   ) {
     redirect(
-      `/macrociclo/${parsed.data.macrocicloId}/editar?cc=${encodeURIComponent(parsed.data.cc)}&paso=5`,
+      `/macrociclo/${parsed.data.macrocicloId}/editar?cc=${encodeURIComponent(parsed.data.cc)}&paso=3`,
     );
   }
 

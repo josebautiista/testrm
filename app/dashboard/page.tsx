@@ -6,6 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { ICCSection } from "@/components/dashboard/ICCSection";
 import { IMCCard } from "@/components/dashboard/IMCCard";
 import { DashboardSessionsSection } from "@/components/dashboard/DashboardSessionsSection";
+import { SummaryMetrics } from "@/components/dashboard/SummaryMetrics";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -42,15 +43,6 @@ function formatSessionCardDate(date: Date) {
     month: "long",
     year: "numeric",
   }).format(date);
-}
-
-function formatValue(value: number, unit?: string) {
-  const formatted = new Intl.NumberFormat("es-CO", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(value);
-
-  return unit ? `${formatted} ${unit}` : formatted;
 }
 
 function formatDaysAgo(date: Date) {
@@ -220,20 +212,25 @@ export default async function DashboardPage({
             ? `Última sesión: ${formatDaysAgo(latestSession.createdAt)}`
             : "Última sesión: sin sesiones"}
         </p>
-        <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-200 bg-bg-main px-4 py-3 sm:grid-cols-3 sm:gap-4 dark:border-white/10 dark:bg-bg-soft">
-          <MetricRow label="Identificación" value={persona.cc} compact />
-          <MetricRow
-            label="Peso"
-            value={formatValue(persona.masaCorporal, "kg")}
-            compact
-          />
-          <MetricRow
-            label="Talla"
-            value={formatValue(persona.talla, "m")}
-            compact
-          />
-        </div>
+        <SummaryMetrics
+          cc={persona.cc}
+          masaCorporal={persona.masaCorporal}
+          talla={persona.talla}
+        />
       </header>
+
+      <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+            Nueva sesión de test de fuerza máxima (RM) 
+          </h2>
+          <p className="text-sm text-text-secondary">
+            Determina tu fuerza máxima (RM) en diferentes ejercicios 
+            para obtener tus porcentajes de carga.
+          </p>
+        </div>
+        <PrimaryButton href={newSessionHref}>Crear nueva sesión</PrimaryButton>
+      </section>
 
       <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
         <div className="space-y-1">
@@ -298,19 +295,6 @@ export default async function DashboardPage({
             </form>
           </div>
         )}
-      </section>
-
-      <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
-        <div className="space-y-1">
-          <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-            Nueva sesión de test de fuerza máxima (RM) 
-          </h2>
-          <p className="text-sm text-text-secondary">
-            Determina tu fuerza máxima (RM) en diferentes ejercicios 
-            para obtener tus porcentajes de carga.
-          </p>
-        </div>
-        <PrimaryButton href={newSessionHref}>Crear nueva sesión</PrimaryButton>
       </section>
 
       <DashboardSessionsSection

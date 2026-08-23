@@ -235,8 +235,11 @@ function calcularMesociclos(
       ...s,
       tipoMicrociclo: "corriente" as const,
       frecuencia: 0,
+      series: 0,
+      repeticiones: 0,
       volumen: 0,
       intensidad: 0,
+      ejercicios: [],
     }));
 
     return {
@@ -274,16 +277,19 @@ export function calcularPeriodizacion(
     semanasBase,
   );
 
-  const semanas: SemanaCalculada[] = semanasBase.map((semanaBase) => ({
-    numeroSemana: semanaBase.numeroSemana,
-    mesCalendario: semanaBase.mesCalendario,
-    fechaInicio: semanaBase.fechaInicio,
-    fechaFin: semanaBase.fechaFin,
-    tipoMicrociclo: "corriente",
-    frecuencia: 0,
-    volumen: 0,
-    intensidad: 0,
-  }));
+    const semanas: SemanaCalculada[] = semanasBase.map((semanaBase) => ({
+      numeroSemana: semanaBase.numeroSemana,
+      mesCalendario: semanaBase.mesCalendario,
+      fechaInicio: semanaBase.fechaInicio,
+      fechaFin: semanaBase.fechaFin,
+      tipoMicrociclo: "corriente",
+      frecuencia: 0,
+      series: 0,
+      repeticiones: 0,
+      volumen: 0,
+      intensidad: 0,
+      ejercicios: [],
+    }));
 
   return {
     fechaInicio,

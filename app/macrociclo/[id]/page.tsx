@@ -405,6 +405,9 @@ export default async function MacrocicloDetallePage({
                   <th className="px-4 py-3 text-left font-medium text-text-secondary">
                     Semanas
                   </th>
+                  <th className="px-4 py-3 text-left font-medium text-text-secondary">
+                    Carga
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-bg-soft dark:divide-white/8">
@@ -427,6 +430,14 @@ export default async function MacrocicloDetallePage({
                           (semana) => semana.mesocicloId === mesociclo.id,
                         ).length
                       }
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/macrociclo/${id}/mesociclo/${mesociclo.id}/carga?cc=${encodeURIComponent(cc)}`}
+                        className="text-sm font-medium text-accent hover:underline"
+                      >
+                        {mesociclo.carga ? "Editar ✓" : "Dosificar"}
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -458,6 +469,12 @@ export default async function MacrocicloDetallePage({
                     Frecuencia
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-text-secondary">
+                    Series
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-text-secondary">
+                    Repeticiones
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-text-secondary">
                     Volumen
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-text-secondary">
@@ -483,6 +500,12 @@ export default async function MacrocicloDetallePage({
                       {semana.frecuencia}
                     </td>
                     <td className="px-4 py-3 text-text-secondary">
+                      {semana.series}
+                    </td>
+                    <td className="px-4 py-3 text-text-secondary">
+                      {semana.repeticiones}
+                    </td>
+                    <td className="px-4 py-3 text-text-secondary">
                       {formatNumber(semana.volumen)} kg
                     </td>
                     <td className="px-4 py-3 text-text-secondary">
@@ -490,6 +513,68 @@ export default async function MacrocicloDetallePage({
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {macrociclo.semanas.some((s) => s.ejercicios.length > 0) ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-text-primary dark:text-white">
+            Volumen por ejercicio
+          </h2>
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-white/8">
+            <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-white/8">
+              <thead className="bg-bg-main">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-text-secondary">
+                    Semana
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-text-secondary">
+                    Ejercicio
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-text-secondary">
+                    Fórmula RM
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium text-text-secondary">
+                    RM
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium text-text-secondary">
+                    Peso
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium text-text-secondary">
+                    Volumen
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-bg-soft dark:divide-white/8">
+                {macrociclo.semanas.flatMap((semana) =>
+                  semana.ejercicios.length > 0
+                    ? semana.ejercicios.map((ejercicio, idx) => (
+                        <tr key={`${semana.id}-${ejercicio.ejercicioId}`}>
+                          <td className="px-4 py-3 text-text-primary dark:text-white">
+                            {idx === 0 ? semana.numeroSemana : ""}
+                          </td>
+                          <td className="px-4 py-3 text-text-secondary">
+                            {ejercicio.ejercicio.nombre}
+                          </td>
+                          <td className="px-4 py-3 text-text-secondary capitalize">
+                            {ejercicio.formulaRm}
+                          </td>
+                          <td className="px-4 py-3 text-right text-text-secondary">
+                            {formatNumber(ejercicio.rm)} kg
+                          </td>
+                          <td className="px-4 py-3 text-right text-text-secondary">
+                            {formatNumber(ejercicio.peso)} kg
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium text-text-primary dark:text-white">
+                            {formatNumber(ejercicio.volumen)} kg
+                          </td>
+                        </tr>
+                      ))
+                    : [],
+                )}
               </tbody>
             </table>
           </div>

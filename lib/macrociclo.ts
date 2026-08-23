@@ -187,13 +187,24 @@ export type MesocicloInput = {
   porcentaje: number;
 };
 
+export type SemanaEjercicioInput = {
+  ejercicioId: number;
+  formulaRm: string;
+  rm: number;
+  peso: number;
+  volumen: number;
+};
+
 export type SemanaInput = {
   numeroSemana: number;
   tipoMicrociclo: TipoMicrociclo;
   frecuencia: number;
+  series: number;
+  repeticiones: number;
   volumen: number;
   intensidad: number;
   notas?: string;
+  ejercicios: SemanaEjercicioInput[];
 };
 
 export type PeriodoCalculado = {
@@ -229,9 +240,12 @@ export type SemanaCalculada = {
   fechaFin: Date;
   tipoMicrociclo: TipoMicrociclo;
   frecuencia: number;
+  series: number;
+  repeticiones: number;
   volumen: number;
   intensidad: number;
   notas?: string;
+  ejercicios: SemanaEjercicioInput[];
 };
 
 export function isObjetivoTipo(value: string): value is ObjetivoTipo {

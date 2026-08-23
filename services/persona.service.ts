@@ -193,3 +193,68 @@ export async function updatePersona(
     );
   }
 }
+
+export type MedidasBasicasInput = {
+  masaCorporal: number;
+  talla: number;
+};
+
+export type MedidasBasicasResult = {
+  masaCorporal: number;
+  talla: number;
+};
+
+export async function updateMedidasBasicas(
+  cc: string,
+  data: MedidasBasicasInput,
+): Promise<MedidasBasicasResult> {
+  const normalizedCC = normalizeText(cc);
+
+  if (!normalizedCC) {
+    throw new Error("El CC es obligatorio.");
+  }
+
+  const masaCorporal = normalizeWeightToKilograms(data.masaCorporal);
+  const talla = normalizeHeightToMeters(data.talla);
+
+  if (!Number.isFinite(talla) || talla < 1.2 || talla > 2.2) {
+    throw new Error(
+      `La talla debe quedar entre 1.2 y 2.2 metros. Recibido: ${talla}. Si la ingresaste en centimetros, debe ser mayor que 3 para que se convierta automaticamente.`,
+    );
+  }
+
+  if (
+    !Number.isFinite(masaCorporal) ||
+    masaCorporal < 30 ||
+    masaCorporal > 300
+  ) {
+    throw new Error(
+      `La masa corporal debe quedar entre 30 y 300 kg. Recibido: ${masaCorporal}. Si la ingresaste en libras, debe ser mayor que 150 para que se convierta automaticamente.`,
+    );
+  }
+
+  try {
+    return await prisma.persona.update({
+      where: { cc: normalizedCC },
+      data: {
+        masaCorporal,
+        talla,
+      },
+      select: {
+        masaCorporal: true,
+        talla: true,
+      },
+    });
+  } catch (error) {
+    const knownRequestError = mapKnownRequestError(error);
+    if (knownRequestError) {
+      throw knownRequestError;
+    }
+
+    throw new Error(
+      error instanceof Error
+        ? `No fue posible actualizar las medidas. ${error.message}`
+        : `No fue posible actualizar las medidas. ${String(error)}`,
+    );
+  }
+}

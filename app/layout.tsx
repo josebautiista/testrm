@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AppThemeToggle } from "../components/ui/AppThemeToggle";
+import { NumberInputWheelGuard } from "../components/ui/NumberInputWheelGuard";
 import { ensureDefaultAdminUser } from "@/lib/bootstrap";
 import "./globals.css";
 
@@ -28,21 +29,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function () {
-                try {
-                  const saved = window.localStorage.getItem("theme");
-                  const isDark = saved !== "light";
-                  document.documentElement.classList.toggle("dark", isDark);
-                } catch {
-                  document.documentElement.classList.add("dark");
-                }
-              })();
-            `,
-          }}
-        />
+        <script src="/theme-script.js" />
       </head>
       <body className="min-h-full bg-white font-sans text-gray-900 selection:bg-accent/25 dark:bg-bg-main dark:text-white">
         <div className="pointer-events-none fixed inset-x-0 top-5 z-50">
@@ -54,6 +41,7 @@ export default function RootLayout({
         <div className="mx-auto min-h-screen w-full max-w-105 px-4 py-6 lg:max-w-6xl">
           {children}
         </div>
+        <NumberInputWheelGuard />
       </body>
     </html>
   );
