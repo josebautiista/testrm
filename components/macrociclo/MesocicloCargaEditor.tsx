@@ -23,6 +23,8 @@ type MesocicloCargaEditorProps = {
   mesocicloId: number;
   semanas: SemanaCargaInfo[];
   cargaInicial: CargaMesocicloInputData | null;
+  /** M-01: decide con qué direcciones arranca el editor. */
+  perfil?: { capacidad: string; calendario: string };
   onGuardado?: () => void;
   textoExito?: string;
 };
@@ -100,11 +102,12 @@ export function MesocicloCargaEditor({
   mesocicloId,
   semanas,
   cargaInicial,
+  perfil,
   onGuardado,
   textoExito = "Carga guardada correctamente.",
 }: MesocicloCargaEditorProps) {
   const [data, setData] = useState<CargaMesocicloInputData>(
-    cargaInicial ?? crearCargaInicial(semanas),
+    cargaInicial ?? crearCargaInicial(semanas, perfil),
   );
   const [error, setError] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(false);

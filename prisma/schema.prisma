@@ -185,6 +185,13 @@ model Macrociclo {
   personaId         Int
   objetivoTipo      String // "salud" | "competencia"
   objetivoDetalle   String?
+
+  // ADR-37 · Perfil deportivo: los tres descriptores que hacen que un mismo
+  // motor sirva a cualquier deporte sin mantener un catálogo de deportes.
+  // Ver lib/planificacion/perfil.ts.
+  capacidadDominante   String? // fuerza_potencia|resistencia|mixto_intermitente|tecnico_estetico
+  estructuraCalendario String? // pico_unico|doble_pico|temporada_larga|sin_competencia
+  nivelAtleta          String? // beginner|intermediate|advanced
   fechaInicio       DateTime @db.Date
   fechaFin          DateTime @db.Date
   fechaCompetencia  DateTime? @db.Date
@@ -208,8 +215,9 @@ model Macrociclo {
 
   persona    Persona              @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   sesionRm   Sesion?              @relation(fields: [sesionRmId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  periodos   MacrocicloPeriodo[]
-  mesociclos MacrocicloMesociclo[]
+  periodos     MacrocicloPeriodo[]
+  mesociclos   MacrocicloMesociclo[]
+  competencias MacrocicloCompetencia[]
   semanas    MacrocicloSemana[]
   auditLogs  MacrocicloAuditLog[]
   ajustesPropuestos AjustePropuesto[]
@@ -217,10 +225,29 @@ model Macrociclo {
   @@index([personaId, estado])
 }
 
+/// ADR-38 · Calendario real de competencias. Antes solo existía
+/// `Macrociclo.fechaCompetencia`, un único campo: con él no se puede
+/// representar ni una liga de varios meses ni un año de doble pico, y es el
+/// calendario lo que determina si la periodización es simple, doble o de
+/// temporada. También es lo que permite colocar el taper donde toca.
+model MacrocicloCompetencia {
+  id           Int      @id @default(autoincrement())
+  macrocicloId Int
+  nombre       String
+  fecha        DateTime @db.Date
+  importancia  String   // "principal" | "secundaria"
+  notas        String?
+  createdAt    DateTime @default(now())
+
+  macrociclo Macrociclo @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([macrocicloId, fecha])
+}
+
 model MacrocicloPeriodo {
   id           Int     @id @default(autoincrement())
   macrocicloId Int
-  tipo         String // "preparatorio" | "competitivo"
+  tipo         String // "preparatorio" | "competitivo" | "transitorio"
   porcentaje   Float
   fechaInicio  DateTime @db.Date
   fechaFin     DateTime @db.Date
@@ -235,7 +262,7 @@ model MacrocicloPeriodo {
 model MacrocicloEtapa {
   id          Int     @id @default(autoincrement())
   periodoId   Int
-  tipo        String // "general" | "especifica" | "precompetitiva" | "competitiva"
+  tipo        String // "general" | "especifica" | "precompetitiva" | "competitiva" | "transitoria"
   porcentaje  Float
   fechaInicio DateTime @db.Date
   fechaFin    DateTime @db.Date
@@ -249,7 +276,7 @@ model MacrocicloEtapa {
 model MacrocicloMesociclo {
   id           Int     @id @default(autoincrement())
   macrocicloId Int
-  tipo         String // "entrante" | "desarrollador" | "desarrollador_especifico" | "estabilizador" | "precompetitivo" | "choque" | "aproximacion" | "competencia"
+  tipo         String // "entrante" | "desarrollador" | "desarrollador_especifico" | "estabilizador" | "precompetitivo" | "choque" | "aproximacion" | "competencia" | "transitorio"
   porcentaje   Float
   fechaInicio  DateTime @db.Date
   fechaFin     DateTime @db.Date
@@ -296,7 +323,7 @@ model MacrocicloSemana {
   mesCalendario  Int
   fechaInicio    DateTime @db.Date
   fechaFin       DateTime @db.Date
-  tipoMicrociclo String // "evaluacion" | "corriente" | "competitivo" | "precompetitivo" | "choque" | "recuperacion" | "aproximacion"
+  tipoMicrociclo String // "evaluacion" | "corriente" | "competitivo" | "precompetitivo" | "choque" | "recuperacion" | "aproximacion" | "taper"
   frecuencia     Int
   series         Int     @default(0)
   repeticiones   Int     @default(0)

@@ -99,7 +99,7 @@ export default async function PersonaDetailPage({
                     "Wathen",
                     "Baechle",
                     "Casas",
-                    "Nacleiro",
+                    "Naclerio",
                   ]}
                   hasRows={sesion.resultados.length > 0}
                   emptyMessage="Sin resultados en esta sesion."

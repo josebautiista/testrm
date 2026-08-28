@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import {
@@ -11,24 +11,66 @@ import {
   type TipoPeriodo,
   type Vo2maxSnapshot,
   OBJETIVOS,
-  ETAPAS_POR_PERIODO,
-  ORDEN_MESES,
-  TIPOS_PERIODO,
+  PASO_WIZARD,
+  parseDateInput,
   toISODate,
 } from "@/lib/macrociclo";
-import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
+import {
+  calcularPeriodizacion,
+  contarSemanas,
+} from "@/lib/macrociclo-periodizacion";
+import {
+  construirEstructura,
+  isCapacidadDominante,
+  isEstructuraCalendario,
+  isNivelAtleta,
+  modoCalendarioDe,
+  PERFIL_POR_DEFECTO,
+  type PerfilDeportivo,
+} from "@/lib/planificacion/perfil";
 import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import { guardarPasoObjetivoFechasAction } from "@/actions/macrociclo";
 import {
   PasoRm,
   PasoVo2max,
-  PasoPeriodos,
-  PasoEtapas,
-  PasoMesociclos,
   PasoSemanas,
   PasoCarga,
   PasoRevision,
 } from "./wizard-steps";
+import { PasoPerfil, type CompetenciaEditable } from "./PasoPerfil";
+import { PasoEstructura } from "./PasoEstructura";
+
+/**
+ * ADR-37 · Perfil efectivo en cliente. Mismo criterio que
+ * `services/macrociclo.service.ts resolverPerfil`: si falta un descriptor se
+ * deriva del objetivo, para que el asistente nunca arranque sin perfil.
+ */
+function resolverPerfilCliente(macrociclo: {
+  objetivoTipo: string;
+  capacidadDominante?: string | null;
+  estructuraCalendario?: string | null;
+  nivelAtleta?: string | null;
+}): PerfilDeportivo {
+  return {
+    capacidad: isCapacidadDominante(macrociclo.capacidadDominante)
+      ? macrociclo.capacidadDominante
+      : PERFIL_POR_DEFECTO.capacidad,
+    calendario: isEstructuraCalendario(macrociclo.estructuraCalendario)
+      ? macrociclo.estructuraCalendario
+      : macrociclo.objetivoTipo === "competencia"
+        ? "pico_unico"
+        : "sin_competencia",
+    nivel: isNivelAtleta(macrociclo.nivelAtleta)
+      ? macrociclo.nivelAtleta
+      : PERFIL_POR_DEFECTO.nivel,
+  };
+}
+
+type MacrocicloCompetencia = {
+  nombre: string;
+  fecha: Date;
+  importancia: string;
+};
 
 type MacrocicloPeriodo = {
   tipo: string;
@@ -86,6 +128,9 @@ type MacrocicloWithRelations = {
   personaId: number;
   objetivoTipo: string;
   objetivoDetalle: string | null;
+  capacidadDominante: string | null;
+  estructuraCalendario: string | null;
+  nivelAtleta: string | null;
   fechaInicio: Date;
   fechaFin: Date;
   fechaCompetencia: Date | null;
@@ -98,6 +143,7 @@ type MacrocicloWithRelations = {
   periodos: MacrocicloPeriodo[];
   mesociclos: MacrocicloMesociclo[];
   semanas: MacrocicloSemana[];
+  competencias: MacrocicloCompetencia[];
   sesionRm?: {
     id: number;
     resultados: ResultadoRm[];
@@ -112,6 +158,8 @@ type Persona = {
   talla: number;
   cintura: number | null;
   cadera: number | null;
+  /** ADR-43 · Base de la frecuencia semanal propuesta (C-12). */
+  diasDisponibles?: number;
 };
 
 type SesionRm = {
@@ -130,16 +178,22 @@ type SesionRm = {
   }>;
 };
 
+/**
+ * ADR-37: los tres pasos de porcentajes (Periodos, Etapas, Mesociclos) se
+ * sustituyen por un único paso de Estructura, que ya no se rellena a mano
+ * sino que se deriva del perfil deportivo. Antes el entrenador tenía que
+ * cuadrar tres conjuntos de porcentajes que debían sumar 100 cada uno y que
+ * podían no alinearse entre sí.
+ */
 const PASOS = [
   { numero: 1, label: "Objetivo" },
-  { numero: 2, label: "RM" },
-  { numero: 3, label: "VO2Max" },
-  { numero: 4, label: "Periodos" },
-  { numero: 5, label: "Etapas" },
-  { numero: 6, label: "Mesociclos" },
-  { numero: 7, label: "Semanas" },
-  { numero: 8, label: "Carga" },
-  { numero: 9, label: "Revisión" },
+  { numero: 2, label: "Perfil" },
+  { numero: 3, label: "RM" },
+  { numero: 4, label: "VO2Max" },
+  { numero: 5, label: "Estructura" },
+  { numero: 6, label: "Semanas" },
+  { numero: 7, label: "Carga" },
+  { numero: 8, label: "Revisión" },
 ];
 
 export function MacrocicloWizard({
@@ -167,9 +221,6 @@ export function MacrocicloWizard({
     toISODate(macrociclo.fechaInicio),
   );
   const [fechaFin, setFechaFin] = useState(toISODate(macrociclo.fechaFin));
-  const [fechaCompetencia, setFechaCompetencia] = useState(
-    macrociclo.fechaCompetencia ? toISODate(macrociclo.fechaCompetencia) : "",
-  );
 
   const [sesionRmId, setSesionRmId] = useState<number | "">(
     macrociclo.sesionRmId ?? "",
@@ -190,64 +241,18 @@ export function MacrocicloWizard({
     vo2maxInicial?.metodo === "leger" ? String(vo2maxInicial.etapa) : "",
   );
 
-  const [periodos, setPeriodos] = useState<Record<TipoPeriodo, number | "">>(() => {
-    const saved: Partial<Record<TipoPeriodo, number>> = {};
-    for (const p of macrociclo.periodos) {
-      if (p.tipo === "preparatorio" || p.tipo === "competitivo") {
-        saved[p.tipo] = p.porcentaje;
-      }
-    }
-    return {
-      preparatorio: saved.preparatorio ?? 50,
-      competitivo: saved.competitivo ?? 50,
-    };
-  });
+  const [perfil, setPerfil] = useState<PerfilDeportivo>(() =>
+    resolverPerfilCliente(macrociclo),
+  );
 
-  const [etapas, setEtapas] = useState<Record<TipoPeriodo, Record<TipoEtapa, number | "">>>(() => {
-    const saved: Record<TipoPeriodo, Partial<Record<TipoEtapa, number>>> = {
-      preparatorio: {},
-      competitivo: {},
-    };
-    for (const periodo of macrociclo.periodos) {
-      const tipoPeriodo = periodo.tipo as TipoPeriodo;
-      for (const etapa of periodo.etapas) {
-        const tipoEtapa = etapa.tipo as TipoEtapa;
-        saved[tipoPeriodo][tipoEtapa] = etapa.porcentaje;
-      }
-    }
-    return {
-      preparatorio: {
-        general: saved.preparatorio.general ?? 50,
-        especifica: saved.preparatorio.especifica ?? 50,
-        precompetitiva: 0,
-        competitiva: 0,
-      },
-      competitivo: {
-        general: 0,
-        especifica: 0,
-        precompetitiva: saved.competitivo.precompetitiva ?? 50,
-        competitiva: saved.competitivo.competitiva ?? 50,
-      },
-    };
-  });
-
-  const [mesociclos, setMesociclos] = useState<Record<TipoMesociclo, number | "">>(() => {
-    const saved: Partial<Record<TipoMesociclo, number>> = {};
-    for (const m of macrociclo.mesociclos) {
-      const tipo = m.tipo as TipoMesociclo;
-      saved[tipo] = m.porcentaje;
-    }
-    return {
-      entrante: saved.entrante ?? 10,
-      desarrollador: saved.desarrollador ?? 15,
-      desarrollador_especifico: saved.desarrollador_especifico ?? 15,
-      estabilizador: saved.estabilizador ?? 10,
-      precompetitivo: saved.precompetitivo ?? 15,
-      choque: saved.choque ?? 10,
-      aproximacion: saved.aproximacion ?? 15,
-      competencia: saved.competencia ?? 10,
-    };
-  });
+  const [competencias, setCompetencias] = useState<CompetenciaEditable[]>(() =>
+    (macrociclo.competencias ?? []).map((competencia) => ({
+      nombre: competencia.nombre,
+      fecha: toISODate(competencia.fecha),
+      importancia:
+        competencia.importancia === "principal" ? "principal" : "secundaria",
+    })),
+  );
 
   const [semanasConfig, setSemanasConfig] = useState<
     Record<
@@ -305,45 +310,48 @@ export function MacrocicloWizard({
     await guardarPasoObjetivoFechasAction(formData);
   }
 
+  const competenciasPlan = useMemo(
+    () =>
+      competencias
+        .map((competencia) => {
+          const fecha = parseDateInput(competencia.fecha);
+          return fecha
+            ? {
+                fecha,
+                importancia: competencia.importancia,
+                nombre: competencia.nombre || "la competencia",
+              }
+            : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
+    [competencias],
+  );
+
   function buildPeriodizacionPayload() {
     const fechaInicioDate = new Date(`${fechaInicio}T00:00:00`);
     const fechaFinDate = new Date(`${fechaFin}T00:00:00`);
 
-    const periodosInput = TIPOS_PERIODO.map((p) => ({
-      tipo: p.value,
-      porcentaje: Number(periodos[p.value]),
-    }));
-
-    const etapasPorPeriodo: Record<
-      TipoPeriodo,
-      { tipo: TipoEtapa; porcentaje: number }[]
-    > = {
-      preparatorio: ETAPAS_POR_PERIODO.preparatorio.map((tipo) => ({
-        tipo,
-        porcentaje: Number(etapas.preparatorio[tipo]),
-      })),
-      competitivo: ETAPAS_POR_PERIODO.competitivo.map((tipo) => ({
-        tipo,
-        porcentaje: Number(etapas.competitivo[tipo]),
-      })),
-    };
-
-    const mesociclosInput = ORDEN_MESES.map((tipo) => ({
-      tipo,
-      porcentaje: Number(mesociclos[tipo]),
-    }));
-
+    // ADR-37: la estructura ya no se arma desde el formulario. Solo se
+    // recalcula aquí para poder emparejar cada semana con su configuración
+    // de carga; periodos y mesociclos los deriva el servidor del perfil.
     const calculado = calcularPeriodizacion({
       fechaInicio: fechaInicioDate,
       fechaFin: fechaFinDate,
-      periodos: periodosInput,
-      etapasPorPeriodo,
-      mesociclos: mesociclosInput,
+      estructura: construirEstructura(
+        perfil,
+        contarSemanas(fechaInicioDate, fechaFinDate),
+      ),
+      competencias: competenciasPlan,
+      modoCalendario: modoCalendarioDe(perfil),
+      frecuenciaDeload: perfil.nivel === "advanced" ? 3 : 4,
     });
 
     const semanasInput = calculado.semanas.map((s) => ({
       numeroSemana: s.numeroSemana,
-      tipoMicrociclo: semanasConfig[s.numeroSemana]?.tipoMicrociclo ?? "corriente",
+      // ADR-44: si el entrenador cambió el tipo a mano, se envía el suyo; si
+      // no, el que propuso el motor.
+      tipoMicrociclo:
+        semanasConfig[s.numeroSemana]?.tipoMicrociclo ?? s.tipoMicrociclo,
       frecuencia: Number(semanasConfig[s.numeroSemana]?.frecuencia ?? 0),
       series: Number(semanasConfig[s.numeroSemana]?.series ?? 0),
       repeticiones: Number(semanasConfig[s.numeroSemana]?.repeticiones ?? 0),
@@ -358,13 +366,14 @@ export function MacrocicloWizard({
       })),
     }));
 
-    return {
-      periodos: periodosInput,
-      etapasPorPeriodo,
-      mesociclos: mesociclosInput,
-      semanas: semanasInput,
-    };
+    return { semanas: semanasInput };
   }
+
+  const totalSemanas = useMemo(() => {
+    const inicio = parseDateInput(fechaInicio);
+    const fin = parseDateInput(fechaFin);
+    return inicio && fin ? contarSemanas(inicio, fin) : 0;
+  }, [fechaFin, fechaInicio]);
 
   function renderPaso() {
     switch (paso) {
@@ -381,12 +390,27 @@ export function MacrocicloWizard({
             setFechaInicio={setFechaInicio}
             fechaFin={fechaFin}
             setFechaFin={setFechaFin}
-            fechaCompetencia={fechaCompetencia}
-            setFechaCompetencia={setFechaCompetencia}
             onSubmit={handleObjetivoSubmit}
           />
         );
       case 2:
+        return (
+          <PasoPerfil
+            cc={persona.cc}
+            macrocicloId={macrociclo.id}
+            objetivoTipo={objetivoTipo}
+            perfilInicial={perfil}
+            competenciasIniciales={competencias}
+            totalSemanas={totalSemanas}
+            fechaFin={fechaFin}
+            onGuardado={(nuevoPerfil, nuevasCompetencias) => {
+              setPerfil(nuevoPerfil);
+              setCompetencias(nuevasCompetencias);
+              irAPaso(PASO_WIZARD.rm);
+            }}
+          />
+        );
+      case 3:
         return (
           <PasoRm
             cc={persona.cc}
@@ -397,7 +421,7 @@ export function MacrocicloWizard({
             objetivoTipo={objetivoTipo}
           />
         );
-      case 3:
+      case 4:
         return (
           <PasoVo2max
             cc={persona.cc}
@@ -410,77 +434,57 @@ export function MacrocicloWizard({
             setLegerEtapa={setVo2LegerEtapa}
           />
         );
-      case 4:
-        return (
-          <PasoPeriodos
-            periodos={periodos}
-            setPeriodos={setPeriodos}
-            onContinuar={() => irAPaso(5)}
-          />
-        );
       case 5:
         return (
-          <PasoEtapas
-            etapas={etapas}
-            setEtapas={setEtapas}
-            onContinuar={() => irAPaso(6)}
-          />
+          <div className="space-y-5">
+            <PasoEstructura
+              perfil={perfil}
+              fechaInicio={fechaInicio}
+              fechaFin={fechaFin}
+              competencias={competencias}
+            />
+            <button
+              type="button"
+              onClick={() => irAPaso(PASO_WIZARD.semanas)}
+              className="rounded-2xl border border-transparent bg-text-primary px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90 dark:bg-white dark:text-black"
+            >
+              Continuar
+            </button>
+          </div>
         );
       case 6:
-        return (
-          <PasoMesociclos
-            mesociclos={mesociclos}
-            setMesociclos={setMesociclos}
-            onContinuar={() => irAPaso(7)}
-          />
-        );
-      case 7:
         return (
           <PasoSemanas
             cc={persona.cc}
             macrocicloId={macrociclo.id}
             fechaInicio={new Date(`${fechaInicio}T00:00:00`)}
             fechaFin={new Date(`${fechaFin}T00:00:00`)}
-            periodos={TIPOS_PERIODO.map((p) => ({
-              tipo: p.value,
-              porcentaje: periodos[p.value],
-            }))}
-            etapasPorPeriodo={{
-              preparatorio: ETAPAS_POR_PERIODO.preparatorio.map((tipo) => ({
-                tipo,
-                porcentaje: (etapas.preparatorio[tipo] ?? 0) as number,
-              })),
-              competitivo: ETAPAS_POR_PERIODO.competitivo.map((tipo) => ({
-                tipo,
-                porcentaje: (etapas.competitivo[tipo] ?? 0) as number,
-              })),
-            }}
-            mesociclos={ORDEN_MESES.map((tipo) => ({
-              tipo,
-              porcentaje: mesociclos[tipo],
-            }))}
+            perfil={perfil}
+            competencias={competenciasPlan}
+            diasDisponibles={persona.diasDisponibles ?? 3}
             semanasConfig={semanasConfig}
             setSemanasConfig={setSemanasConfig}
             semanasSeleccionadas={semanasSeleccionadas}
             setSemanasSeleccionadas={setSemanasSeleccionadas}
             resultadosRm={macrociclo.sesionRm?.resultados ?? []}
             buildPeriodizacionPayload={buildPeriodizacionPayload}
-            onContinuar={() => irAPaso(8)}
+            onContinuar={() => irAPaso(PASO_WIZARD.carga)}
           />
         );
-      case 8:
+      case 7:
         return (
           <PasoCarga
             cc={persona.cc}
             macrocicloId={macrociclo.id}
+            perfil={perfil}
             mesociclos={macrociclo.mesociclos.map((m) => ({
               ...m,
               carga: m.carga as CargaMesocicloInputData | null,
             }))}
-            onContinuar={() => irAPaso(9)}
+            onContinuar={() => irAPaso(PASO_WIZARD.revision)}
           />
         );
-      case 9:
+      case 8:
         return (
           <PasoRevision
             cc={persona.cc}
@@ -576,8 +580,6 @@ function PasoObjetivoFechas({
   setFechaInicio,
   fechaFin,
   setFechaFin,
-  fechaCompetencia,
-  setFechaCompetencia,
   onSubmit,
 }: {
   cc: string;
@@ -590,8 +592,6 @@ function PasoObjetivoFechas({
   setFechaInicio: (value: string) => void;
   fechaFin: string;
   setFechaFin: (value: string) => void;
-  fechaCompetencia: string;
-  setFechaCompetencia: (value: string) => void;
   onSubmit: (formData: FormData) => Promise<void>;
 }) {
   function handleChangeObjetivo(value: string) {
@@ -700,38 +700,24 @@ function PasoObjetivoFechas({
           />
         </label>
 
-        {objetivoTipo === "competencia" ? (
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-text-primary dark:text-white">
-              Fecha de competencia
-            </span>
-            <input
-              type="date"
-              name="fechaCompetencia"
-              value={fechaCompetencia}
-              onChange={(e) => {
-                setFechaCompetencia(e.target.value);
-                setFechaFin(e.target.value);
-              }}
-              required
-              className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-            />
-          </label>
-        ) : (
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-text-primary dark:text-white">
-              Fecha final objetivo
-            </span>
-            <input
-              type="date"
-              name="fechaFin"
-              value={fechaFin}
-              onChange={(e) => setFechaFin(e.target.value)}
-              required
-              className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-            />
-          </label>
-        )}
+        <label className="block space-y-2">
+          <span className="text-sm font-medium text-text-primary dark:text-white">
+            Fecha final del macrociclo
+          </span>
+          <input
+            type="date"
+            name="fechaFin"
+            value={fechaFin}
+            onChange={(e) => setFechaFin(e.target.value)}
+            required
+            className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
+          />
+          <span className="block text-xs leading-5 text-text-tertiary">
+            {objetivoTipo === "competencia"
+              ? "Si vas a competir, deja entre 2 y 4 semanas después de tu última competencia: el periodo transitorio de descanso activo va justo después de competir, no antes. Las fechas de competencia se añaden en el paso siguiente."
+              : "El plan termina con 2 a 4 semanas de transitorio (descanso activo), que ya van incluidas en este rango."}
+          </span>
+        </label>
       </div>
 
       <p className="text-xs text-text-tertiary">

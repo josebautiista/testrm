@@ -37,6 +37,27 @@ const MEDIDA_GRUPOS = [
   { path: "indicesSalud", label: "Índices de salud" },
 ];
 
+/** M-02/ADR-41 · Etiquetas del perfil deportivo para el detalle. */
+const CAPACIDAD_LABEL: Record<string, string> = {
+  fuerza_potencia: "Fuerza y potencia",
+  resistencia: "Resistencia",
+  mixto_intermitente: "Mixto o intermitente",
+  tecnico_estetico: "Técnico o estético",
+};
+
+const CALENDARIO_LABEL: Record<string, string> = {
+  sin_competencia: "No compite",
+  pico_unico: "Una fecha importante",
+  doble_pico: "Dos fechas separadas",
+  temporada_larga: "Compite seguido durante meses",
+};
+
+const NIVEL_LABEL: Record<string, string> = {
+  beginner: "Principiante",
+  intermediate: "Intermedio",
+  advanced: "Avanzado",
+};
+
 const MEDIDA_LABELS: Record<string, string> = {
   masaCorporalKg: "Masa corporal (kg)",
   tallaCm: "Talla (cm)",
@@ -209,17 +230,49 @@ export default async function MacrocicloDetallePage({
               {toISODate(macrociclo.fechaInicio)} - {toISODate(macrociclo.fechaFin)}
             </p>
           </div>
-          {macrociclo.objetivoTipo === "competencia" &&
-          macrociclo.fechaCompetencia ? (
-            <div>
-              <p className="text-sm text-text-secondary">
-                Fecha de competencia
-              </p>
-              <p className="font-medium text-text-primary dark:text-white">
-                {toISODate(macrociclo.fechaCompetencia)}
-              </p>
-            </div>
-          ) : null}
+          {/* M-02/ADR-41: el perfil deportivo es lo que determina toda la
+              estructura del plan, así que tiene que verse aquí. */}
+          <div>
+            <p className="text-sm text-text-secondary">Perfil</p>
+            <p className="font-medium text-text-primary dark:text-white">
+              {CAPACIDAD_LABEL[macrociclo.capacidadDominante ?? ""] ??
+                "Sin definir"}
+            </p>
+            <p className="text-sm text-text-secondary">
+              {CALENDARIO_LABEL[macrociclo.estructuraCalendario ?? ""] ??
+                "Calendario sin definir"}
+              {macrociclo.nivelAtleta
+                ? ` · ${NIVEL_LABEL[macrociclo.nivelAtleta] ?? macrociclo.nivelAtleta}`
+                : ""}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-sm text-text-secondary">
+              {macrociclo.estructuraCalendario === "sin_competencia"
+                ? "Fechas objetivo"
+                : "Competencias"}
+            </p>
+            {macrociclo.competencias.length > 0 ? (
+              <ul className="mt-1 space-y-0.5">
+                {macrociclo.competencias.map((competencia) => (
+                  <li key={competencia.id} className="text-sm">
+                    <span className="font-medium text-text-primary dark:text-white">
+                      {toISODate(competencia.fecha)}
+                    </span>{" "}
+                    <span className="text-text-secondary">
+                      {competencia.nombre}
+                      {competencia.importancia === "principal"
+                        ? " · principal"
+                        : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="font-medium text-text-tertiary">Sin fechas</p>
+            )}
+          </div>
           <div>
             <p className="text-sm text-text-secondary">Sesión RM</p>
             <p className="font-medium text-text-primary dark:text-white">

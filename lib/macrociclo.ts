@@ -1,11 +1,18 @@
 export type ObjetivoTipo = "salud" | "competencia";
 export type EstadoMacrociclo = "borrador" | "activo" | "cerrado" | "eliminado";
-export type TipoPeriodo = "preparatorio" | "competitivo";
+/**
+ * ADR-37 · El plan anual estándar tiene **tres** periodos, no dos. El
+ * transitorio (descanso activo tras competir) faltaba: sin él, terminar un
+ * macrociclo era un corte seco, y el corte seco produce desentrenamiento
+ * medible en menos de 4 semanas.
+ */
+export type TipoPeriodo = "preparatorio" | "competitivo" | "transitorio";
 export type TipoEtapa =
   | "general"
   | "especifica"
   | "precompetitiva"
-  | "competitiva";
+  | "competitiva"
+  | "transitoria";
 export type TipoMesociclo =
   | "entrante"
   | "desarrollador"
@@ -14,7 +21,8 @@ export type TipoMesociclo =
   | "precompetitivo"
   | "choque"
   | "aproximacion"
-  | "competencia";
+  | "competencia"
+  | "transitorio";
 export type TipoMicrociclo =
   | "evaluacion"
   | "corriente"
@@ -22,7 +30,9 @@ export type TipoMicrociclo =
   | "precompetitivo"
   | "choque"
   | "recuperacion"
-  | "aproximacion";
+  | "aproximacion"
+  /** ADR-38 · Semana de afinamiento previa a competir: volumen recortado, intensidad intacta. */
+  | "taper";
 export type MetodoVo2max = "leger" | "cooper";
 export type UserType = "persona" | "admin";
 
@@ -39,11 +49,7 @@ export const TIPOS_PERIODO: { value: TipoPeriodo; label: string }[] = [
 export const ETAPAS_POR_PERIODO: Record<TipoPeriodo, TipoEtapa[]> = {
   preparatorio: ["general", "especifica"],
   competitivo: ["precompetitiva", "competitiva"],
-};
-
-export const MESES_POR_PERIODO: Record<TipoPeriodo, string[]> = {
-  preparatorio: ["general", "especifica"],
-  competitivo: ["precompetitiva", "competitiva"],
+  transitorio: ["transitoria"],
 };
 
 export const MESES_POR_ETAPA_LABEL: Record<TipoEtapa, string> = {
@@ -51,6 +57,21 @@ export const MESES_POR_ETAPA_LABEL: Record<TipoEtapa, string> = {
   especifica: "Específica",
   precompetitiva: "Precompetitiva",
   competitiva: "Competitiva",
+  transitoria: "Transitoria",
+};
+
+/** Qué se persigue en cada etapa, en lenguaje de atleta. */
+export const ETAPA_DESCRIPCION: Record<TipoEtapa, string> = {
+  general:
+    "Construir la base: mucho volumen, poca especificidad. Es la etapa que sostiene todo lo demás.",
+  especifica:
+    "El trabajo se parece cada vez más a tu deporte. Baja el volumen general y sube la intensidad.",
+  precompetitiva:
+    "Ajuste fino antes de competir. Se mantiene la intensidad y se recorta el volumen acumulado.",
+  competitiva:
+    "Periodo de competencias. El entrenamiento sostiene el rendimiento, ya no lo construye.",
+  transitoria:
+    "Descanso activo. Ni parar del todo ni seguir entrenando fuerte: se mantiene el 40-50 % del volumen para no perder lo ganado.",
 };
 
 export const MESES_POR_TIPO_LABEL: Record<TipoMesociclo, string> = {
@@ -62,6 +83,28 @@ export const MESES_POR_TIPO_LABEL: Record<TipoMesociclo, string> = {
   choque: "Choque",
   aproximacion: "Aproximación",
   competencia: "Competencia",
+  transitorio: "Transitorio",
+};
+
+/** Para qué sirve cada bloque, en lenguaje de atleta. */
+export const MESOCICLO_DESCRIPCION: Record<TipoMesociclo, string> = {
+  entrante:
+    "Reentrada. Volumen moderado y cargas bajas para volver a la rutina sin lesionarte.",
+  desarrollador:
+    "El bloque que más masa y capacidad de trabajo construye. Volumen alto.",
+  desarrollador_especifico:
+    "Mismo volumen alto, pero con ejercicios más parecidos a tu deporte.",
+  estabilizador:
+    "Se consolida lo ganado y sube la intensidad. Menos volumen, más carga.",
+  precompetitivo:
+    "Trabajo casi de competencia. Alta intensidad, volumen contenido.",
+  choque:
+    "Bloque de carga concentrada, deliberadamente exigente. Nunca dos semanas de choque seguidas.",
+  aproximacion:
+    "Afinamiento: se recorta volumen y se mantiene la intensidad para llegar fresco.",
+  competencia: "Semanas de competir. El entrenamiento solo sostiene la forma.",
+  transitorio:
+    "Descanso activo después de competir. Mantiene un mínimo de actividad para no desentrenarte.",
 };
 
 export const ORDEN_MESES: TipoMesociclo[] = [
@@ -73,6 +116,7 @@ export const ORDEN_MESES: TipoMesociclo[] = [
   "choque",
   "aproximacion",
   "competencia",
+  "transitorio",
 ];
 
 export const TIPOS_MICROCICLO: { value: TipoMicrociclo; label: string }[] = [
@@ -83,7 +127,23 @@ export const TIPOS_MICROCICLO: { value: TipoMicrociclo; label: string }[] = [
   { value: "choque", label: "Choque" },
   { value: "recuperacion", label: "Recuperación" },
   { value: "aproximacion", label: "Aproximación" },
+  { value: "taper", label: "Taper" },
 ];
+
+/** Qué significa cada tipo de semana para quien la ejecuta. */
+export const MICROCICLO_DESCRIPCION: Record<TipoMicrociclo, string> = {
+  evaluacion:
+    "Semana de medición: se testea para saber dónde estás, no para acumular carga.",
+  corriente: "Semana de trabajo estándar del bloque.",
+  competitivo: "Semana con competencia. La prioridad es competir, no entrenar.",
+  precompetitivo: "Semana de ajuste previa a competir: alta intensidad, volumen bajo.",
+  choque: "Semana deliberadamente dura, por encima de lo habitual.",
+  recuperacion:
+    "Semana de descarga: volumen e intensidad reducidos para asimilar lo entrenado.",
+  aproximacion: "Semana de acercamiento a la competencia.",
+  taper:
+    "Afinamiento: se recorta el volumen entre 41 % y 60 % y se mantienen la intensidad y la frecuencia. Es lo que hace que llegues fresco sin perder forma.",
+};
 
 export type MedidasSnapshot = {
   metadata?: {
@@ -242,6 +302,20 @@ export type SemanaCalculada = {
   intensidad: number;
   notas?: string;
   ejercicios: SemanaEjercicioInput[];
+
+  // ADR-43 · Contexto derivado de la semana. Es lo que permite proponer su
+  // configuración de carga en vez de pedirla campo a campo: sin saber a qué
+  // bloque pertenece ni en qué posición del bloque está, no hay nada que
+  // suponer.
+  /** Objetivo del bloque al que pertenece (fuerza_maxima, hipertrofia, …). */
+  objetivoBloque?: string;
+  /** Posición dentro de su bloque, 1-indexada, y tamaño del bloque. */
+  indiceEnBloque?: number;
+  totalSemanasBloque?: number;
+  /** Factores de carga ya resueltos (descarga, taper, evaluación). */
+  factorVolumen?: number;
+  factorIntensidad?: number;
+  esDeload?: boolean;
 };
 
 export function isObjetivoTipo(value: string): value is ObjetivoTipo {
@@ -249,13 +323,21 @@ export function isObjetivoTipo(value: string): value is ObjetivoTipo {
 }
 
 export function isTipoPeriodo(value: string): value is TipoPeriodo {
-  return value === "preparatorio" || value === "competitivo";
+  return (
+    value === "preparatorio" ||
+    value === "competitivo" ||
+    value === "transitorio"
+  );
 }
 
 export function isTipoEtapa(value: string): value is TipoEtapa {
-  return ["general", "especifica", "precompetitiva", "competitiva"].includes(
-    value,
-  );
+  return [
+    "general",
+    "especifica",
+    "precompetitiva",
+    "competitiva",
+    "transitoria",
+  ].includes(value);
 }
 
 export function isTipoMesociclo(value: string): value is TipoMesociclo {
@@ -316,3 +398,32 @@ export function diasEntre(inicio: Date, fin: Date): number {
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
+
+// ---------------------------------------------------------------------------
+// Pasos del asistente de macrociclo (ADR-42)
+// ---------------------------------------------------------------------------
+
+/**
+ * Número de cada paso del asistente, en un único sitio.
+ *
+ * Estaban repetidos como literales en `actions/macrociclo.ts` (redirecciones),
+ * `services/macrociclo.service.ts` (`pasoActual`), el propio asistente y la
+ * página de edición. Al insertar el paso de Perfil y fusionar los tres de
+ * porcentajes en uno (ADR-37), la numeración cambió y esos literales quedaron
+ * apuntando al paso equivocado: guardar la sesión de RM devolvía al usuario al
+ * paso anterior en vez de avanzar.
+ */
+export const PASO_WIZARD = {
+  objetivo: 1,
+  perfil: 2,
+  rm: 3,
+  vo2max: 4,
+  estructura: 5,
+  semanas: 6,
+  carga: 7,
+  revision: 8,
+} as const;
+
+export type PasoWizard = (typeof PASO_WIZARD)[keyof typeof PASO_WIZARD];
+
+export const TOTAL_PASOS_WIZARD = Object.keys(PASO_WIZARD).length;

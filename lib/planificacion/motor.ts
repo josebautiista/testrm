@@ -2,7 +2,7 @@
 // contexto -> propuesta. Orquesta plantillas + estructura + prescripción +
 // validación. Ver §6.2 y acceptance de FASE 4: un plan de 16 semanas se
 // genera en menos de 2 s y cumple los 10 invariantes de R-16.
-import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
+import { calcularPeriodizacion, contarSemanas } from "@/lib/macrociclo-periodizacion";
 import { diasEntre } from "@/lib/macrociclo";
 import { DELOAD } from "@/lib/config/parametros";
 import {
@@ -10,10 +10,12 @@ import {
   evaluarVigencia,
 } from "@/lib/rm/vigente";
 import {
-  asignarMicrociclos,
-  type SemanaParaMicrociclo,
-} from "./estructura";
-import { obtenerPlantilla, obtenerProgresionBloque, obtenerZonaBloque } from "./plantillas";
+  OBJETIVO_BLOQUE_POR_MESOCICLO,
+  obtenerEstructura,
+  obtenerProgresionBloque,
+  obtenerZonaBloque,
+} from "./plantillas";
+import { modoCalendarioDe, type PerfilDeportivo } from "./perfil";
 import { generarSesionesSemana, seleccionarEjerciciosPorPatron } from "./prescripcion";
 import { validarPlan } from "./validacion";
 import type {
@@ -73,14 +75,40 @@ export function generarPlan(contexto: ContextoPlanificacion): PropuestaPlan {
     ]);
   }
 
-  const plantilla = obtenerPlantilla(contexto.objetivo.tipo, contexto.atleta.nivel);
+  // ADR-37: la forma del plan sale del perfil deportivo. Si el contexto no lo
+  // trae (plan antiguo o llamada sin perfil), se deriva del objetivo: salud
+  // no tiene competencia, y competencia asume un pico único.
+  const perfil: PerfilDeportivo = contexto.objetivo.perfil ?? {
+    capacidad: "mixto_intermitente",
+    calendario:
+      contexto.objetivo.tipo === "competencia" ? "pico_unico" : "sin_competencia",
+    nivel: contexto.atleta.nivel,
+  };
+
+  const totalSemanasPlan = contarSemanas(fechaInicio, fechaFin);
+  const estructura = obtenerEstructura(perfil, totalSemanasPlan);
+
+  const competencias =
+    contexto.objetivo.competencias ??
+    (contexto.objetivo.fechaCompetencia
+      ? [
+          {
+            fecha: contexto.objetivo.fechaCompetencia,
+            importancia: "principal" as const,
+          },
+        ]
+      : []);
 
   const calculado = calcularPeriodizacion({
     fechaInicio,
     fechaFin,
-    periodos: plantilla.periodos,
-    etapasPorPeriodo: plantilla.etapasPorPeriodo,
-    mesociclos: plantilla.mesociclos.map((m) => ({ tipo: m.tipo, porcentaje: m.porcentaje })),
+    estructura,
+    competencias,
+    modoCalendario: modoCalendarioDe(perfil),
+    frecuenciaDeload:
+      contexto.atleta.nivel === "advanced"
+        ? DELOAD.frecuenciaSemanasAvanzado
+        : DELOAD.frecuenciaSemanasEstandar,
   });
 
   // E-06/E-08: menos semanas que bloques, o macrociclo demasiado corto.
@@ -93,16 +121,18 @@ export function generarPlan(contexto: ContextoPlanificacion): PropuestaPlan {
   // tipo (evita cualquier ambigüedad si en el futuro una plantilla repite
   // un mismo tipo de mesociclo, D-09).
   const mesociclosPropuestos: MesocicloPropuesto[] = calculado.mesociclos.map((m, index) => {
-    const plantillaMesociclo = plantilla.mesociclos[index];
-    const zona = obtenerZonaBloque(plantillaMesociclo.objetivoBloque);
+    const bloque = estructura.bloques[index];
+    const objetivoBloque =
+      bloque?.objetivoBloque ?? OBJETIVO_BLOQUE_POR_MESOCICLO[m.tipo];
+    const zona = obtenerZonaBloque(objetivoBloque);
     return {
       tipo: m.tipo,
       porcentaje: m.porcentaje,
       fechaInicio: m.fechaInicio,
       fechaFin: m.fechaFin,
       orden: m.orden,
-      objetivoBloque: plantillaMesociclo.objetivoBloque,
-      progresion: obtenerProgresionBloque(plantillaMesociclo.objetivoBloque),
+      objetivoBloque,
+      progresion: obtenerProgresionBloque(objetivoBloque),
       intensidadMinPct: zona.intensidadMinPct,
       intensidadMaxPct: zona.intensidadMaxPct,
       repsMin: zona.repsMin,
@@ -121,22 +151,14 @@ export function generarPlan(contexto: ContextoPlanificacion): PropuestaPlan {
     contexto.rmVigentes,
   );
 
-  const frecuenciaDeload =
-    contexto.atleta.nivel === "advanced"
-      ? DELOAD.frecuenciaSemanasAvanzado
-      : DELOAD.frecuenciaSemanasEstandar;
-
-  const mesocicloDeSemana = (fechaSemana: Date) =>
-    mesociclosPropuestos.find(
-      (m) => fechaSemana >= m.fechaInicio && fechaSemana <= m.fechaFin,
-    );
-
-  const semanasParaMicrociclo: SemanaParaMicrociclo[] = calculado.semanas.map((s) => ({
-    numeroSemana: s.numeroSemana,
-    mesocicloTipo: mesocicloDeSemana(s.fechaInicio)?.tipo ?? mesociclosPropuestos[0].tipo,
-  }));
-  const microciclos = asignarMicrociclos(semanasParaMicrociclo, frecuenciaDeload);
-  const microciclosPorNumero = new Map(microciclos.map((m) => [m.numeroSemana, m]));
+  // ADR-38: el tipo de cada semana (incluidos taper y evaluación) ya lo
+  // resolvió calcularPeriodizacion contra el calendario de competencias.
+  const microciclosPorNumero = new Map(
+    calculado.semanas.map((s) => [
+      s.numeroSemana,
+      { tipoMicrociclo: s.tipoMicrociclo, esDeload: s.tipoMicrociclo === "recuperacion" },
+    ]),
+  );
 
   const avisos: string[] = [];
 

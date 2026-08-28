@@ -11,7 +11,21 @@ import {
   type TipoPeriodo,
   type Vo2maxSnapshot,
 } from "@/lib/macrociclo";
-import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
+import {
+  calcularPeriodizacion,
+  contarSemanas,
+} from "@/lib/macrociclo-periodizacion";
+import { isTipoMicrociclo, PASO_WIZARD } from "@/lib/macrociclo";
+import { factoresPorTipoMicrociclo } from "@/lib/planificacion/taper";
+import { DELOAD } from "@/lib/config/parametros";
+import { obtenerEstructura } from "@/lib/planificacion/plantillas";
+import {
+  isCapacidadDominante,
+  isEstructuraCalendario,
+  isNivelAtleta,
+  modoCalendarioDe,
+  type PerfilDeportivo,
+} from "@/lib/planificacion/perfil";
 import {
   type CargaMesocicloInputData,
   validarCargaMesociclo,
@@ -101,17 +115,24 @@ export async function crearORecuperarBorrador({
   });
 }
 
+/**
+ * ADR-37 · El macrociclo se cierra cuando termina, no cuando se compite.
+ *
+ * Antes se cerraba un día después de `fechaCompetencia`: el atleta competía y
+ * al día siguiente su plan desaparecía, sin transitorio y sin evaluación
+ * final. Pero el periodo transitorio va justo después de competir, y cortar
+ * en seco produce desentrenamiento medible en menos de cuatro semanas. Ahora
+ * el cierre ocurre al pasar `fechaFin`, que es donde termina el transitorio.
+ */
 export async function cerrarMacrocicloLazy(personaId: number) {
-  const ahora = new Date();
-  const umbral = new Date(ahora);
-  umbral.setDate(umbral.getDate() - 1);
+  const umbral = new Date();
+  umbral.setHours(0, 0, 0, 0);
 
   const vencidos = await prisma.macrociclo.findMany({
     where: {
       personaId,
       estado: "activo",
-      objetivoTipo: "competencia",
-      fechaCompetencia: { lt: umbral },
+      fechaFin: { lt: umbral },
     },
   });
 
@@ -121,7 +142,7 @@ export async function cerrarMacrocicloLazy(personaId: number) {
       data: {
         estado: "cerrado",
         closedAt: new Date(),
-        closedReason: "auto_competencia",
+        closedReason: "auto_fin_transitorio",
       },
     });
 
@@ -131,7 +152,7 @@ export async function cerrarMacrocicloLazy(personaId: number) {
         personaId,
         userType: "persona",
         action: "macrociclo_cerrado_auto",
-        metadata: { reason: "auto_competencia" },
+        metadata: { reason: "auto_fin_transitorio" },
       },
     });
   }
@@ -199,7 +220,6 @@ export async function guardarPasoObjetivoFechas({
   objetivoDetalle,
   fechaInicio,
   fechaFin,
-  fechaCompetencia,
   pasoActual,
   context,
 }: {
@@ -209,10 +229,12 @@ export async function guardarPasoObjetivoFechas({
   objetivoDetalle?: string;
   fechaInicio: Date;
   fechaFin: Date;
-  fechaCompetencia?: Date;
   pasoActual: number;
   context: AuditContext;
 }) {
+  // M-03/ADR-41: `fechaCompetencia` no se toca aquí. Su fuente única es
+  // `guardarCompetencias`, que la deriva de la primera competencia principal
+  // del calendario. Tener dos escritores era tener dos verdades.
   const actualizado = await prisma.macrociclo.update({
     where: { id, personaId },
     data: {
@@ -220,8 +242,7 @@ export async function guardarPasoObjetivoFechas({
       objetivoDetalle,
       fechaInicio,
       fechaFin,
-      fechaCompetencia,
-      pasoActual: Math.max(pasoActual, 2),
+      pasoActual: Math.max(pasoActual, PASO_WIZARD.perfil),
     },
   });
 
@@ -266,7 +287,7 @@ export async function guardarMedidasSnapshot({
       where: { id, personaId },
       data: {
         medidasSnapshot: medidas as Prisma.InputJsonValue,
-        pasoActual: Math.max(pasoActual, 3),
+        pasoActual: Math.max(pasoActual, PASO_WIZARD.vo2max),
       },
     });
 
@@ -323,7 +344,7 @@ export async function guardarRmSnapshot({
     data: {
       sesionRmId,
       rmSnapshot: rmSnapshot as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 3),
+      pasoActual: Math.max(pasoActual, PASO_WIZARD.vo2max),
     },
   });
 
@@ -355,7 +376,7 @@ export async function guardarVo2maxSnapshot({
     where: { id, personaId },
     data: {
       vo2maxSnapshot: vo2max as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 4),
+      pasoActual: Math.max(pasoActual, PASO_WIZARD.estructura),
     },
   });
 
@@ -369,45 +390,236 @@ export async function guardarVo2maxSnapshot({
   return actualizado;
 }
 
-export async function guardarPeriodizacion({
+/**
+ * ADR-37: la estructura ya no llega como tres conjuntos de porcentajes que el
+ * entrenador tenía que cuadrar a mano. Se deriva del perfil deportivo
+ * guardado en el macrociclo y de su duración; periodos, etapas y mesociclos
+ * alinean por construcción.
+ */
+
+/**
+ * ADR-37 · Perfil efectivo del macrociclo. Si falta alguno de los tres
+ * descriptores se deriva del objetivo: "salud" no tiene competencia y
+ * "competencia" asume un pico único, que es el caso más común.
+ */
+export function resolverPerfil(macrociclo: {
+  objetivoTipo: string;
+  capacidadDominante: string | null;
+  estructuraCalendario: string | null;
+  nivelAtleta: string | null;
+}): PerfilDeportivo {
+  return {
+    capacidad: isCapacidadDominante(macrociclo.capacidadDominante)
+      ? macrociclo.capacidadDominante
+      : "mixto_intermitente",
+    calendario: isEstructuraCalendario(macrociclo.estructuraCalendario)
+      ? macrociclo.estructuraCalendario
+      : macrociclo.objetivoTipo === "competencia"
+        ? "pico_unico"
+        : "sin_competencia",
+    nivel: isNivelAtleta(macrociclo.nivelAtleta)
+      ? macrociclo.nivelAtleta
+      : "beginner",
+  };
+}
+
+/** ADR-37 · Guarda los tres descriptores del perfil deportivo. */
+/** Paso del asistente que sigue al de perfil. */
+const PASO_SIGUIENTE_A_PERFIL = PASO_WIZARD.rm;
+
+export async function guardarPerfilDeportivo({
   id,
   personaId,
-  periodos,
-  etapasPorPeriodo,
-  mesociclos,
-  semanas,
-  pasoActual,
+  perfil,
   context,
 }: {
   id: number;
   personaId: number;
-  periodos: PeriodoInput[];
-  etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number }[]>;
-  mesociclos: MesocicloInput[];
-  semanas: SemanaInput[];
-  pasoActual: number;
+  perfil: PerfilDeportivo;
+  context: AuditContext;
+}) {
+  const antes = await prisma.macrociclo.findUnique({
+    where: { id, personaId },
+    select: {
+      capacidadDominante: true,
+      estructuraCalendario: true,
+      nivelAtleta: true,
+      pasoActual: true,
+    },
+  });
+
+  if (!antes) {
+    throw new Error("Macrociclo no encontrado.");
+  }
+
+  const actualizado = await prisma.macrociclo.update({
+    where: { id },
+    data: {
+      capacidadDominante: perfil.capacidad,
+      estructuraCalendario: perfil.calendario,
+      nivelAtleta: perfil.nivel,
+      // Nunca retrocede: si el entrenador vuelve a este paso desde el 7, el
+      // asistente no debe reiniciarse a la mitad.
+      pasoActual: Math.max(antes.pasoActual, PASO_SIGUIENTE_A_PERFIL),
+    },
+  });
+
+  await auditarMacrociclo({
+    macrocicloId: id,
+    personaId,
+    action: "perfil_deportivo_guardado",
+    before: antes,
+    after: {
+      capacidadDominante: perfil.capacidad,
+      estructuraCalendario: perfil.calendario,
+      nivelAtleta: perfil.nivel,
+    },
+    context,
+  });
+
+  return actualizado;
+}
+
+/**
+ * ADR-38 · Reemplaza el calendario de competencias del macrociclo. Se
+ * sustituye completo (no hay diff) porque una competencia no tiene estado
+ * propio que preservar: es una fecha con un nombre.
+ */
+export async function guardarCompetencias({
+  id,
+  personaId,
+  competencias,
+  context,
+}: {
+  id: number;
+  personaId: number;
+  competencias: Array<{
+    nombre: string;
+    fecha: Date;
+    importancia: "principal" | "secundaria";
+  }>;
   context: AuditContext;
 }) {
   const macrociclo = await prisma.macrociclo.findUnique({
     where: { id, personaId },
-    select: { fechaInicio: true, fechaFin: true },
+    select: {
+      fechaInicio: true,
+      fechaFin: true,
+      pasoActual: true,
+      competencias: { select: { nombre: true, fecha: true, importancia: true } },
+    },
   });
 
   if (!macrociclo) {
     throw new Error("Macrociclo no encontrado.");
   }
 
+  const validas = competencias.filter(
+    (competencia) =>
+      competencia.fecha instanceof Date &&
+      !Number.isNaN(competencia.fecha.getTime()) &&
+      competencia.nombre.trim() !== "",
+  );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.macrocicloCompetencia.deleteMany({ where: { macrocicloId: id } });
+
+    if (validas.length > 0) {
+      await tx.macrocicloCompetencia.createMany({
+        data: validas.map((competencia) => ({
+          macrocicloId: id,
+          nombre: competencia.nombre.trim(),
+          fecha: competencia.fecha,
+          importancia: competencia.importancia,
+        })),
+      });
+    }
+
+    // La primera competencia principal sigue poblando `fechaCompetencia`:
+    // el cierre automático y los planes antiguos dependen de ese campo.
+    const principal = validas
+      .filter((competencia) => competencia.importancia === "principal")
+      .sort((a, b) => a.fecha.getTime() - b.fecha.getTime())[0];
+
+    await tx.macrociclo.update({
+      where: { id },
+      data: {
+        fechaCompetencia: principal?.fecha ?? null,
+        pasoActual: Math.max(macrociclo.pasoActual, PASO_SIGUIENTE_A_PERFIL),
+      },
+    });
+  });
+
+  await auditarMacrociclo({
+    macrocicloId: id,
+    personaId,
+    action: "competencias_guardadas",
+    before: { competencias: macrociclo.competencias },
+    after: { competencias: validas },
+    context,
+  });
+}
+
+export async function guardarPeriodizacion({
+  id,
+  personaId,
+  semanas,
+  pasoActual,
+  context,
+}: {
+  id: number;
+  personaId: number;
+  semanas: SemanaInput[];
+  pasoActual: number;
+  context: AuditContext;
+}) {
+  const macrociclo = await prisma.macrociclo.findUnique({
+    where: { id, personaId },
+    select: {
+      fechaInicio: true,
+      fechaFin: true,
+      objetivoTipo: true,
+      capacidadDominante: true,
+      estructuraCalendario: true,
+      nivelAtleta: true,
+      competencias: {
+        select: { nombre: true, fecha: true, importancia: true },
+        orderBy: { fecha: "asc" },
+      },
+    },
+  });
+
+  if (!macrociclo) {
+    throw new Error("Macrociclo no encontrado.");
+  }
+
+  const perfil = resolverPerfil(macrociclo);
+  const totalSemanas = contarSemanas(
+    macrociclo.fechaInicio,
+    macrociclo.fechaFin,
+  );
+  const estructura = obtenerEstructura(perfil, totalSemanas);
+
   const calculado = calcularPeriodizacion({
     fechaInicio: macrociclo.fechaInicio,
     fechaFin: macrociclo.fechaFin,
-    periodos,
-    etapasPorPeriodo,
-    mesociclos,
+    estructura,
+    competencias: macrociclo.competencias.map((competencia) => ({
+      fecha: competencia.fecha,
+      importancia:
+        competencia.importancia === "principal" ? "principal" : "secundaria",
+      nombre: competencia.nombre,
+    })),
+    modoCalendario: modoCalendarioDe(perfil),
+    frecuenciaDeload:
+      perfil.nivel === "advanced"
+        ? DELOAD.frecuenciaSemanasAvanzado
+        : DELOAD.frecuenciaSemanasEstandar,
   });
 
-  // F-08/D-10: calcularPeriodizacion nunca lanza; si la distribución de
-  // semanas no es posible (menos semanas que bloques activos), lo reporta
-  // aquí como un error explícito antes de tocar la base de datos (E-06).
+  // F-08/D-10/ADR-37: calcularPeriodizacion nunca lanza; si la estructura no
+  // cabe en el rango de fechas, lo reporta aquí como un error explícito antes
+  // de tocar la base de datos (E-06).
   if (calculado.errores.length > 0) {
     throw new Error(calculado.errores.join(" "));
   }
@@ -624,6 +836,22 @@ export async function guardarPeriodizacion({
         }
 
         const semanaInput = semanasInputMap.get(semanaCalculada.numeroSemana);
+
+        const tipoPropuesto = semanaCalculada.tipoMicrociclo;
+        const tipoSolicitado = semanaInput?.tipoMicrociclo;
+        const tipoFinal =
+          tipoSolicitado && isTipoMicrociclo(tipoSolicitado)
+            ? tipoSolicitado
+            : tipoPropuesto;
+        const esOverride = tipoFinal !== tipoPropuesto;
+        const factores = esOverride
+          ? factoresPorTipoMicrociclo(tipoFinal)
+          : {
+              esDeload: semanaCalculada.esDeload ?? false,
+              factorVolumen: semanaCalculada.factorVolumen ?? 1,
+              factorIntensidad: semanaCalculada.factorIntensidad ?? 1,
+            };
+
         const data = {
           macrocicloId: id,
           mesocicloId,
@@ -631,13 +859,25 @@ export async function guardarPeriodizacion({
           mesCalendario: semanaCalculada.mesCalendario,
           fechaInicio: semanaCalculada.fechaInicio,
           fechaFin: semanaCalculada.fechaFin,
-          tipoMicrociclo: semanaInput?.tipoMicrociclo ?? "corriente",
+          // ADR-38/ADR-44: el motor propone el tipo de cada semana contra el
+          // calendario de competencias, pero el entrenador puede cambiarlo:
+          // conoce contextos que el plan no (una lesión, un viaje, un partido
+          // amistoso). Si el valor que llega difiere del calculado, se trata
+          // como decisión suya y manda.
+          //
+          // Los factores de carga se derivan del tipo que finalmente queda:
+          // una semana marcada como taper con factor de volumen 1 no sería un
+          // taper, sería una etiqueta.
+          tipoMicrociclo: tipoFinal,
+          esDeload: factores.esDeload,
+          factorVolumen: factores.factorVolumen,
+          factorIntensidad: factores.factorIntensidad,
           frecuencia: semanaInput?.frecuencia ?? 0,
           series: semanaInput?.series ?? 0,
           repeticiones: semanaInput?.repeticiones ?? 0,
           volumen: semanaInput?.volumen ?? 0,
           intensidad: semanaInput?.intensidad ?? 0,
-          notas: semanaInput?.notas,
+          notas: semanaInput?.notas ?? semanaCalculada.notas,
         };
 
         let semanaId: number;
@@ -703,7 +943,7 @@ export async function guardarPeriodizacion({
 
       await tx.macrociclo.update({
         where: { id },
-        data: { pasoActual: Math.max(pasoActual, 8) },
+        data: { pasoActual: Math.max(pasoActual, PASO_WIZARD.carga) },
       });
 
       await tx.macrocicloAuditLog.create({
@@ -786,6 +1026,7 @@ export async function obtenerMacrocicloPorId(id: number) {
           },
         },
       },
+      competencias: { orderBy: { fecha: "asc" } },
       periodos: {
         orderBy: { orden: "asc" },
         include: {

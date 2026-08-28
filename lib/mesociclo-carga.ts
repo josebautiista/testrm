@@ -32,12 +32,68 @@ export type CargaMesocicloInputData = {
   sesiones: Record<string, Record<string, Record<string, PorcentajeInput>>>;
 };
 
+/**
+ * M-01/ADR-41 · Las direcciones por defecto eran siempre las cuatro del
+ * modelo de deportes de equipo (físico, **táctico**, técnico, psicológico).
+ * A quien entrena por salud "entrenamiento táctico" no le dice nada, y a un
+ * powerlifter tampoco: el paso de carga le pedía repartir porcentajes entre
+ * categorías que no aplican.
+ *
+ * Se siguen pudiendo añadir o quitar direcciones a mano; esto solo cambia con
+ * cuáles se arranca.
+ */
 export const DIRECCIONES_POR_DEFECTO: DireccionCarga[] = [
   { id: "fisico", nombre: "Entrenamiento físico" },
   { id: "tactico", nombre: "Entrenamiento táctico" },
   { id: "tecnico", nombre: "Entrenamiento técnico" },
   { id: "psicologico", nombre: "Entrenamiento psicológico" },
 ];
+
+const DIRECCION_FISICO: DireccionCarga = {
+  id: "fisico",
+  nombre: "Entrenamiento físico",
+};
+const DIRECCION_TECNICO: DireccionCarga = {
+  id: "tecnico",
+  nombre: "Entrenamiento técnico",
+};
+const DIRECCION_TACTICO: DireccionCarga = {
+  id: "tactico",
+  nombre: "Entrenamiento táctico",
+};
+const DIRECCION_PSICOLOGICO: DireccionCarga = {
+  id: "psicologico",
+  nombre: "Entrenamiento psicológico",
+};
+
+/**
+ * Direcciones con las que arranca el editor según el perfil deportivo.
+ *
+ * - Sin competencia: solo físico y técnico. No hay rival contra quien plantear
+ *   una táctica, y el trabajo psicológico específico de competir no aplica.
+ * - Mixto o intermitente (deportes de equipo y de oposición): las cuatro.
+ * - Fuerza-potencia y técnico-estético: sin táctica, que en estas disciplinas
+ *   no es una dirección de entrenamiento separada.
+ */
+export function direccionesPorDefectoPara(perfil: {
+  capacidad: string;
+  calendario: string;
+}): DireccionCarga[] {
+  if (perfil.calendario === "sin_competencia") {
+    return [DIRECCION_FISICO, DIRECCION_TECNICO];
+  }
+
+  if (perfil.capacidad === "mixto_intermitente") {
+    return [
+      DIRECCION_FISICO,
+      DIRECCION_TACTICO,
+      DIRECCION_TECNICO,
+      DIRECCION_PSICOLOGICO,
+    ];
+  }
+
+  return [DIRECCION_FISICO, DIRECCION_TECNICO, DIRECCION_PSICOLOGICO];
+}
 
 const TOLERANCIA = 0.01;
 
@@ -131,15 +187,35 @@ export function calcularMinutosPorSesion(
   return resultado;
 }
 
+/** Reparto inicial del volumen por dirección, normalizado a 100. */
+const PESO_INICIAL_DIRECCION: Record<string, number> = {
+  fisico: 40,
+  tactico: 30,
+  tecnico: 10,
+  psicologico: 20,
+};
+
 export function crearCargaInicial(
   semanas: SemanaCargaInfo[],
+  /** M-01: sin perfil se conserva el comportamiento anterior (las cuatro). */
+  perfil?: { capacidad: string; calendario: string },
 ): CargaMesocicloInputData {
-  const volumen: Record<string, PorcentajeInput> = {
-    fisico: 40,
-    tactico: 30,
-    tecnico: 10,
-    psicologico: 20,
-  };
+  const direcciones = perfil
+    ? direccionesPorDefectoPara(perfil)
+    : [...DIRECCIONES_POR_DEFECTO];
+
+  // El reparto se renormaliza a 100 sobre las direcciones que quedan: si se
+  // arranca solo con físico y técnico, sus pesos no pueden sumar 50.
+  const totalPesos = direcciones.reduce(
+    (suma, direccion) => suma + (PESO_INICIAL_DIRECCION[direccion.id] ?? 0),
+    0,
+  );
+  const volumen: Record<string, PorcentajeInput> = {};
+  for (const direccion of direcciones) {
+    const peso = PESO_INICIAL_DIRECCION[direccion.id] ?? 0;
+    volumen[direccion.id] =
+      totalPesos > 0 ? Math.round((peso / totalPesos) * 100) : 0;
+  }
 
   const microciclos: Record<string, Record<string, PorcentajeInput>> = {};
   const sesiones: Record<
@@ -149,7 +225,7 @@ export function crearCargaInicial(
 
   const pctSemana = semanas.length > 0 ? 100 / semanas.length : 0;
 
-  for (const direccion of DIRECCIONES_POR_DEFECTO) {
+  for (const direccion of direcciones) {
     const porSemana: Record<string, PorcentajeInput> = {};
     const sesionesPorSemana: Record<string, Record<string, PorcentajeInput>> =
       {};
@@ -169,7 +245,7 @@ export function crearCargaInicial(
 
   return {
     tiempoSesionMin: 120,
-    direcciones: [...DIRECCIONES_POR_DEFECTO],
+    direcciones,
     volumen,
     microciclos,
     sesiones,

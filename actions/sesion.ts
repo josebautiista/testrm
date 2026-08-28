@@ -6,16 +6,29 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { calculateRM, calculateRMForSession, roundToTwo } from "@/lib/rm";
+import {
+  calculateEpley,
+  getMaxFormulaRM,
+  getMinFormulaRM,
+} from "@/lib/rm/formulas";
 import { estimarRm } from "@/lib/rm/estimacion";
 import { actualizarRmVigente } from "@/services/rm.service";
+import type { OrigenRmVigente } from "@/lib/rm/vigente";
 
-type RMMethod = "estimation" | "casas" | "nacleiro";
+/**
+ * "naclerio" es la grafía correcta (Fernando Naclerio). Las sesiones
+ * históricas se guardaron como "nacleiro"; se siguen aceptando al leer, pero
+ * nunca se escriben (ADR-31).
+ */
+type RMMethod = "estimation" | "casas" | "naclerio";
 
 type ResultadoInput = {
   ejercicioId: number;
   repeticiones: number;
   carga: number;
   pesoEquipo: number;
+  /** Repeticiones en reserva reportadas por el atleta (ADR-27). */
+  rir: number | null;
   casas: number;
   nacleiro: number;
 };
@@ -30,6 +43,10 @@ type CreateSesionInput = {
   finalRM: number;
   protocolData: Prisma.InputJsonValue | null;
   ejercicios: ResultadoInput[];
+  /** Ejercicio sobre el que se corrió un protocolo directo (Casas/Naclerio). */
+  protocoloEjercicioId: number | null;
+  /** Repeticiones del mejor intento válido del protocolo. */
+  protocoloRepeticiones: number;
   macrocicloId?: number | null;
   returnTo?: string | null;
 };
@@ -86,16 +103,38 @@ function toPositiveInt(value: unknown) {
   return rounded;
 }
 
-function parseRMMethod(value: FormDataEntryValue | null, trainingMonths: number): RMMethod {
+function parseRMMethod(
+  value: FormDataEntryValue | null,
+  trainingMonths: number,
+): RMMethod {
   if (trainingMonths < 4) {
     return "estimation";
   }
 
-  if (value === "casas" || value === "nacleiro") {
-    return value;
+  if (value === "casas") {
+    return "casas";
+  }
+
+  // "nacleiro" es la grafía antigua guardada en sesiones históricas.
+  if (value === "naclerio" || value === "nacleiro") {
+    return "naclerio";
   }
 
   return "estimation";
+}
+
+/** null cuando el atleta no reportó RIR: no es lo mismo que reportar 0. */
+function parseRir(value: FormDataEntryValue | null): number | null {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return Math.min(Math.floor(parsed), 10);
 }
 
 function parseProtocolData(value: FormDataEntryValue | null) {
@@ -108,24 +147,6 @@ function parseProtocolData(value: FormDataEntryValue | null) {
   } catch {
     return null;
   }
-}
-
-function getFormulaRM(
-  input: ResultadoInput,
-  sexo: string,
-  ejerciciosSinCarga: ReadonlySet<number>,
-) {
-  const carga = ejerciciosSinCarga.has(input.ejercicioId)
-    ? 0
-    : input.carga + input.pesoEquipo;
-  const rm = calculateRM(carga, input.repeticiones, sexo);
-  return {
-    ...rm,
-    // D-02: la estimación puntual es la fórmula primaria (Epley), nunca el
-    // máximo entre fórmulas — max() sesga sistemáticamente al alza.
-    // Ver lib/rm/estimacion.ts y ADR-01/ADR-02 en docs/DECISIONES.md.
-    estimated: rm.epley,
-  };
 }
 
 function parseCreateSesionInput(
@@ -197,6 +218,7 @@ function parseCreateSesionInput(
       pesoEquipo: parseNonNegativeNumber(
         formData.get(`pesoEquipo_${ejercicioId}`),
       ),
+      rir: parseRir(formData.get(`rir_${ejercicioId}`)),
       casas: parseNonNegativeNumber(formData.get(`casas_${ejercicioId}`)),
       nacleiro: parseNonNegativeNumber(formData.get(`nacleiro_${ejercicioId}`)),
     });
@@ -210,10 +232,36 @@ function parseCreateSesionInput(
     };
   }
 
+  const rawProtocoloEjercicioId = formData.get("protocoloEjercicioId");
+  const protocoloEjercicioId =
+    typeof rawProtocoloEjercicioId === "string" &&
+    rawProtocoloEjercicioId.trim() !== ""
+      ? Number(rawProtocoloEjercicioId.trim())
+      : null;
+  const protocoloRepeticiones = parseNonNegativeInt(
+    formData.get("protocoloRepeticiones"),
+  );
+
   if (rmMethod !== "estimation" && finalRM <= 0) {
     return {
       ok: false,
-      error: "Debes completar el protocolo para registrar el RM final.",
+      error:
+        "Registra al menos un levantamiento con peso real y márcalo como completado para cerrar el protocolo.",
+      cc,
+    };
+  }
+
+  // H-01: sin ejercicio, el resultado del protocolo no puede enlazarse con
+  // RmVigente y el test quedaría sin efecto sobre la planificación.
+  if (
+    rmMethod !== "estimation" &&
+    (!protocoloEjercicioId ||
+      !Number.isInteger(protocoloEjercicioId) ||
+      protocoloEjercicioId <= 0)
+  ) {
+    return {
+      ok: false,
+      error: "Selecciona el ejercicio sobre el que hiciste el protocolo.",
       cc,
     };
   }
@@ -230,6 +278,9 @@ function parseCreateSesionInput(
       finalRM,
       protocolData,
       ejercicios: resultados,
+      protocoloEjercicioId:
+        rmMethod === "estimation" ? null : protocoloEjercicioId,
+      protocoloRepeticiones,
       macrocicloId: macrocicloId && Number.isInteger(macrocicloId) && macrocicloId > 0 ? macrocicloId : null,
       returnTo,
     },
@@ -262,6 +313,7 @@ function sanitizeInputEjercicios(ejercicios: unknown): ResultadoInput[] {
     const rawRepeticiones = (item as { repeticiones?: unknown }).repeticiones;
     const rawCarga = (item as { carga?: unknown }).carga;
     const rawPesoEquipo = (item as { pesoEquipo?: unknown }).pesoEquipo;
+    const rawRir = (item as { rir?: unknown }).rir;
     const rawCasas = (item as { casas?: unknown }).casas;
     const rawNacleiro = (item as { nacleiro?: unknown }).nacleiro;
     const repeticionesNumber =
@@ -286,6 +338,10 @@ function sanitizeInputEjercicios(ejercicios: unknown): ResultadoInput[] {
       pesoEquipo: Number.isFinite(pesoEquipoNumber)
         ? Math.max(0, pesoEquipoNumber)
         : 0,
+      rir:
+        typeof rawRir === "number" && Number.isFinite(rawRir) && rawRir >= 0
+          ? Math.min(Math.floor(rawRir), 10)
+          : null,
       casas: Number.isFinite(casasNumber) ? Math.max(0, casasNumber) : 0,
       nacleiro: Number.isFinite(nacleiroNumber)
         ? Math.max(0, nacleiroNumber)
@@ -329,7 +385,6 @@ export async function createSesion(
           id: true,
           masaCorporal: true,
           sexo: true,
-          faseEntrenamiento: true,
         },
       });
 
@@ -363,7 +418,9 @@ export async function createSesion(
         sanitizedEjercicios.map((item) => item.ejercicioId),
       );
 
-      const resultadosData = sanitizedEjercicios
+      const esProtocoloDirecto = rmMethod !== "estimation";
+
+      const resultadosEstimacion = sanitizedEjercicios
         .filter((item) => ejerciciosPermitidos.has(item.ejercicioId))
         .map((item) => {
           const fallback = fallbackByExercise.get(item.ejercicioId);
@@ -375,9 +432,16 @@ export async function createSesion(
           // C-03/M4: estimador único con banda e incertidumbre, guardado
           // junto a las 8 fórmulas de referencia. withoutLoad (esDeTiempo)
           // no produce un RM utilizable (D-17/esDeTiempo).
+          //
+          // ADR-27: el RIR reportado entra en la estimación. Una serie con
+          // repeticiones en reserva no es una serie al fallo, y sin corregirlo
+          // Epley subestima el 1RM de forma sistemática.
           const estimacion = withoutLoad
             ? null
-            : estimarRm(carga, item.repeticiones, { sexo: persona.sexo });
+            : estimarRm(carga, item.repeticiones, {
+                sexo: persona.sexo,
+                rirReportado: item.rir,
+              });
 
           return {
             ejercicioId: item.ejercicioId,
@@ -392,32 +456,110 @@ export async function createSesion(
             mayhew: roundToTwo(formula.mayhew),
             wathen: roundToTwo(formula.wathen),
             baechle: roundToTwo(formula.baechle),
-            casas: roundToTwo(rmMethod === "casas" ? item.casas : 0),
-            nacleiro: roundToTwo(rmMethod === "nacleiro" ? item.nacleiro : 0),
+            casas: 0,
+            nacleiro: 0,
             rm1Estimado: estimacion ? roundToTwo(estimacion.valor) : null,
             rmMin: estimacion ? roundToTwo(estimacion.min) : null,
             rmMax: estimacion ? roundToTwo(estimacion.max) : null,
             confianza: estimacion?.confianza ?? null,
             formulaPrimaria: estimacion ? "epley" : null,
             fueraDeRango: estimacion?.fueraDeRango ?? false,
+            rirReportado: item.rir,
           };
         });
 
-      if (rmMethod === "estimation" && resultadosData.length === 0) {
+      // H-01/ADR-30 — un protocolo directo también produce un
+      // `ResultadoEjercicio`. Antes no lo hacía: el bucle que abre
+      // `RmVigente` recorre los resultados de la sesión, así que el RM medido
+      // por el método más preciso moría en `Sesion.finalRM` y la
+      // planificación seguía usando la estimación.
+      const resultadoProtocolo = (() => {
+        if (!esProtocoloDirecto || !input.protocoloEjercicioId) {
+          return null;
+        }
+
+        const ejercicioValido = ejerciciosDB.some(
+          (ejercicio) => ejercicio.id === input.protocoloEjercicioId,
+        );
+        if (!ejercicioValido) {
+          throw new Error("Ejercicio del protocolo no encontrado.");
+        }
+
+        const cargaMedida = input.finalRM;
+        if (!(cargaMedida > 0)) {
+          throw new Error(
+            "El protocolo no registro ningun levantamiento valido.",
+          );
+        }
+
+        // El mejor intento suele ser de 1 repetición: entonces la carga *es*
+        // el 1RM, sin fórmula de por medio. Si se completaron 2 o 3, se
+        // estima desde ahí (sigue siendo una medida directa de esa carga).
+        const repeticiones = Math.max(
+          1,
+          Math.min(input.protocoloRepeticiones || 1, 5),
+        );
+        const formula = calculateRM(cargaMedida, repeticiones, persona.sexo);
+        const rmMedido =
+          repeticiones <= 1
+            ? cargaMedida
+            : calculateEpley(cargaMedida, repeticiones);
+
+        return {
+          ejercicioId: input.protocoloEjercicioId,
+          repeticiones,
+          carga: roundToTwo(cargaMedida),
+          pesoEquipo: 0,
+          epley: roundToTwo(formula.epley),
+          brzycki: roundToTwo(formula.brzycki),
+          lombardi: roundToTwo(formula.lombardi),
+          lander: roundToTwo(formula.lander),
+          oconnor: roundToTwo(formula.oconnor),
+          mayhew: roundToTwo(formula.mayhew),
+          wathen: roundToTwo(formula.wathen),
+          baechle: roundToTwo(formula.baechle),
+          casas: roundToTwo(rmMethod === "casas" ? rmMedido : 0),
+          nacleiro: roundToTwo(rmMethod === "naclerio" ? rmMedido : 0),
+          rm1Estimado: roundToTwo(rmMedido),
+          rmMin: roundToTwo(
+            repeticiones <= 1 ? cargaMedida : getMinFormulaRM(formula),
+          ),
+          rmMax: roundToTwo(
+            repeticiones <= 1 ? cargaMedida : getMaxFormulaRM(formula),
+          ),
+          // Un peso levantado y verificado es el dato de mayor calidad que
+          // puede entrar al sistema.
+          confianza: "alta",
+          formulaPrimaria: repeticiones <= 1 ? "medicion_directa" : "epley",
+          fueraDeRango: false,
+          rirReportado: 0,
+        };
+      })();
+
+      const resultadosData = esProtocoloDirecto
+        ? resultadoProtocolo
+          ? [resultadoProtocolo]
+          : []
+        : resultadosEstimacion;
+
+      if (resultadosData.length === 0) {
         throw new Error(
           "No se pudieron preparar resultados validos para la sesion.",
         );
       }
 
+      // D-15: guardar una sesión no debe borrar en silencio el nivelOverride
+      // que el entrenador fijó a mano.
+      //
+      // ADR-36/D-14: tampoco escribe ya `faseEntrenamiento`/`faseInicioAt`.
+      // Fijar la fase a "resistencia" en la primera sesión era el último
+      // resto de un sistema de progresión paralelo al macrociclo: nada la
+      // hacía avanzar después, así que todo atleta quedaba en "Resistencia"
+      // para siempre. La fase se deriva ahora del mesociclo activo.
       await tx.persona.update({
         where: { id: persona.id },
         data: {
           masaCorporal: input.peso,
-          // D-15: guardar una sesión no debe borrar en silencio el
-          // nivelOverride que el entrenador fijó a mano.
-          ...(persona.faseEntrenamiento === null
-            ? { faseEntrenamiento: "resistencia", faseInicioAt: new Date() }
-            : {}),
         },
       });
 
@@ -428,18 +570,21 @@ export async function createSesion(
       // un valor a nivel de sesión cuando es inequívoco: un único ejercicio
       // evaluado, o un protocolo Casas/Nacleiro sobre un ejercicio de
       // referencia (sanitizedEjercicios vacío en ese caso).
-      const primerEjercicio =
-        sanitizedEjercicios.length === 1 ? sanitizedEjercicios[0] : null;
-      const estimatedRM = primerEjercicio
-        ? getFormulaRM(primerEjercicio, persona.sexo, ejerciciosSinCarga).estimated
-        : sanitizedEjercicios.length === 0
-          ? input.estimatedRM
-          : 0;
-      const finalRM = primerEjercicio
-        ? getFormulaRM(primerEjercicio, persona.sexo, ejerciciosSinCarga).estimated
-        : sanitizedEjercicios.length === 0
-          ? input.finalRM
-          : 0;
+      const unicoResultadoEstimacion =
+        !esProtocoloDirecto && resultadosEstimacion.length === 1
+          ? resultadosEstimacion[0]
+          : null;
+
+      // Para un protocolo directo, `estimatedRM` guarda el RM de referencia
+      // con el que se armaron los pesos y `finalRM` el que realmente se
+      // levantó: la diferencia entre ambos es la que dice si la referencia
+      // estaba bien calibrada.
+      const estimatedRM = esProtocoloDirecto
+        ? input.estimatedRM
+        : (unicoResultadoEstimacion?.rm1Estimado ?? 0);
+      const finalRM = esProtocoloDirecto
+        ? (resultadoProtocolo?.rm1Estimado ?? 0)
+        : (unicoResultadoEstimacion?.rm1Estimado ?? 0);
 
       const creada = await tx.sesion.create({
         data: {
@@ -474,6 +619,14 @@ export async function createSesion(
       // M4/TASK-022: cada resultado con una estimación utilizable pasa a
       // ser el RM vigente de ese ejercicio (D-01: nunca uno global). Un
       // resultado fuera de rango no reemplaza el vigente (D-04/AC-06).
+      //
+      // H-01: el origen ya no está fijado a "estimacion". Un protocolo Casas
+      // o Naclerio produce un RM *medido*, y esa distinción es la que permite
+      // después saber de qué calidad es el dato que alimenta el plan.
+      const origenRm: OrigenRmVigente = esProtocoloDirecto
+        ? "test_directo"
+        : "estimacion";
+
       for (const resultado of creada.resultados) {
         if (
           resultado.rm1Estimado === null ||
@@ -488,7 +641,7 @@ export async function createSesion(
           personaId: persona.id,
           ejercicioId: resultado.ejercicioId,
           valorKg: resultado.rm1Estimado,
-          origen: "estimacion",
+          origen: origenRm,
           confianza: resultado.confianza,
           resultadoRmId: resultado.id,
           fecha: creada.createdAt,

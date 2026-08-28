@@ -168,7 +168,7 @@ const FEATURES = [
   {
     icon: IconFlask,
     title: "Protocolos de laboratorio",
-    desc: "Casas y Nacleiro disponibles para atletas con más experiencia de entrenamiento.",
+    desc: "Casas y Naclerio disponibles para atletas con más experiencia de entrenamiento.",
   },
 ];
 
@@ -281,7 +281,7 @@ export default async function HomePage() {
           </p>
           <p className="leading-7 text-text-secondary">
             Para atletas con más experiencia, los protocolos de laboratorio
-            Casas y Nacleiro miden con carga real en vez de estimar. Y cada
+            Casas y Naclerio miden con carga real en vez de estimar. Y cada
             vez que el RM cambia, el anterior no se sobrescribe — queda
             archivado, así que ninguna prescripción pasada cambia
             retroactivamente.

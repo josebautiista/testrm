@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
 import { obtenerMacrocicloPorId } from "@/services/macrociclo.service";
+import { TOTAL_PASOS_WIZARD } from "@/lib/macrociclo";
 import { MacrocicloWizard } from "../MacrocicloWizard";
 
 export default async function EditarMacrocicloPage({
@@ -63,7 +64,7 @@ export default async function EditarMacrocicloPage({
     },
   });
 
-  const pasoInicial = pasoQuery && pasoQuery >= 1 && pasoQuery <= 9
+  const pasoInicial = pasoQuery && pasoQuery >= 1 && pasoQuery <= TOTAL_PASOS_WIZARD
     ? pasoQuery
     : macrociclo.pasoActual;
 

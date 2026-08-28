@@ -10,13 +10,30 @@
 // garantiza Σ semanas = totalSemanas por construcción.
 
 export type ItemDistribucion = {
+  /**
+   * Clave única del bloque. Sin ella se usa `tipo`, que era la clave original
+   * — pero eso impedía repetir un mismo tipo dentro de un macrociclo, y una
+   * periodización doble necesita exactamente eso (dos bloques "competencia",
+   * dos "aproximacion", dos transitorios). Ver ADR-37.
+   */
+  id?: string;
   tipo: string;
   porcentaje: number;
 };
 
 export type ItemDistribuido = {
+  id?: string;
   tipo: string;
   semanas: number;
+};
+
+export type OpcionesDistribucion = {
+  /**
+   * Semanas garantizadas a cada bloque activo. Por defecto 1 (comportamiento
+   * histórico). `lib/planificacion/perfil.ts` lo pone en 0 porque ya reservó
+   * los mínimos reales de cada bloque —que no son uniformes— antes de llamar.
+   */
+  minimoPorItem?: number;
 };
 
 export class DistribucionSemanasError extends Error {
@@ -26,44 +43,52 @@ export class DistribucionSemanasError extends Error {
   }
 }
 
+function claveDe(item: { id?: string; tipo: string }): string {
+  return item.id ?? item.tipo;
+}
+
 /**
  * Reparte `totalSemanas` entre `items` según su porcentaje, usando el método
- * del mayor resto con mínimo garantizado de 1 semana por bloque activo.
+ * del mayor resto con un mínimo garantizado por bloque activo.
  * Garantiza que la suma de semanas devueltas sea siempre igual a
  * `totalSemanas` (cuando hay al menos un ítem activo).
  *
- * @throws DistribucionSemanasError si totalSemanas < número de ítems activos
- *   (porcentaje > 0): no puede darse al menos 1 semana a cada uno sin
- *   inventar semanas fuera del rango del macrociclo.
+ * @throws DistribucionSemanasError si no alcanzan las semanas para dar el
+ *   mínimo a cada ítem activo (porcentaje > 0).
  */
 export function distribuirSemanasPorMayorResto(
   totalSemanas: number,
   items: ItemDistribucion[],
+  opciones: OpcionesDistribucion = {},
 ): ItemDistribuido[] {
+  const minimo = opciones.minimoPorItem ?? 1;
+
   if (totalSemanas <= 0) {
-    return items.map((item) => ({ tipo: item.tipo, semanas: 0 }));
+    return items.map((item) => ({ id: item.id, tipo: item.tipo, semanas: 0 }));
   }
 
   const activos = items.filter((item) => item.porcentaje > 0);
 
   if (activos.length === 0) {
-    return items.map((item) => ({ tipo: item.tipo, semanas: 0 }));
+    return items.map((item) => ({ id: item.id, tipo: item.tipo, semanas: 0 }));
   }
 
-  if (totalSemanas < activos.length) {
+  const reservadas = activos.length * minimo;
+
+  if (totalSemanas < reservadas) {
     throw new DistribucionSemanasError(
       `No es posible repartir ${totalSemanas} semana(s) entre ${activos.length} bloque(s) activo(s): ` +
-        `se necesita al menos 1 semana por bloque. Reduce el número de bloques o aumenta la duración.`,
+        `se necesita al menos ${minimo} semana(s) por bloque. Reduce el número de bloques o aumenta la duración.`,
     );
   }
 
   const totalPorcentaje = activos.reduce((sum, item) => sum + item.porcentaje, 0);
-  const restante = totalSemanas - activos.length;
+  const restante = totalSemanas - reservadas;
 
   const proporcional = activos.map((item) => {
     const exacto = (restante * item.porcentaje) / totalPorcentaje;
     const base = Math.floor(exacto);
-    return { tipo: item.tipo, base, resto: exacto - base };
+    return { clave: claveDe(item), base, resto: exacto - base };
   });
 
   const usadas = proporcional.reduce((sum, item) => sum + item.base, 0);
@@ -75,13 +100,14 @@ export function distribuirSemanasPorMayorResto(
     sobrantes -= 1;
   }
 
-  const semanasPorTipo = new Map(
-    proporcional.map((item) => [item.tipo, 1 + item.base]),
+  const semanasPorClave = new Map(
+    proporcional.map((item) => [item.clave, minimo + item.base]),
   );
 
   return items.map((item) => ({
+    id: item.id,
     tipo: item.tipo,
-    semanas: semanasPorTipo.get(item.tipo) ?? 0,
+    semanas: semanasPorClave.get(claveDe(item)) ?? 0,
   }));
 }
 
@@ -107,6 +133,7 @@ const MICROCICLO_BASE_POR_MESOCICLO: Record<TipoMesociclo, TipoMicrociclo> = {
   choque: "choque",
   aproximacion: "aproximacion",
   competencia: "competitivo",
+  transitorio: "recuperacion",
 };
 
 export type SemanaParaMicrociclo = {

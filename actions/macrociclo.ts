@@ -19,6 +19,7 @@ import {
   isTipoPeriodo,
   parseDateInput,
   velocidadLegerKmh,
+  PASO_WIZARD,
 } from "@/lib/macrociclo";
 import {
   activarMacrociclo,
@@ -31,7 +32,15 @@ import {
   guardarRmSnapshot,
   guardarVo2maxSnapshot,
   guardarCargaMesociclo,
+  guardarPerfilDeportivo,
+  guardarCompetencias,
 } from "@/services/macrociclo.service";
+import {
+  isCapacidadDominante,
+  isEstructuraCalendario,
+  isNivelAtleta,
+  PERFIL_POR_DEFECTO,
+} from "@/lib/planificacion/perfil";
 import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 
 function getContext() {
@@ -93,6 +102,115 @@ export async function iniciarMacrocicloAction(formData: FormData) {
   redirectToWizard(cc, macrociclo.id, macrociclo.pasoActual);
 }
 
+
+/**
+ * ADR-37 · Guarda los tres descriptores del perfil deportivo. Cualquier valor
+ * no reconocido cae al del perfil por defecto en vez de rechazar el guardado:
+ * el perfil se puede corregir después, y bloquear el avance del asistente por
+ * un valor suelto sería peor.
+ */
+export async function guardarPerfilDeportivoAction(formData: FormData) {
+  const cc = getString(formData, "cc");
+  const id = getInt(formData, "id");
+  const capacidad = getString(formData, "capacidadDominante");
+  const calendario = getString(formData, "estructuraCalendario");
+  const nivel = getString(formData, "nivelAtleta");
+
+  if (!cc || !id) {
+    return { error: "Faltan datos para guardar el perfil." };
+  }
+
+  const persona = await getPersona(cc);
+  if (!persona) {
+    return { error: "Persona no encontrada." };
+  }
+
+  try {
+    await guardarPerfilDeportivo({
+      id,
+      personaId: persona.id,
+      perfil: {
+        capacidad: isCapacidadDominante(capacidad)
+          ? capacidad
+          : PERFIL_POR_DEFECTO.capacidad,
+        calendario: isEstructuraCalendario(calendario)
+          ? calendario
+          : PERFIL_POR_DEFECTO.calendario,
+        nivel: isNivelAtleta(nivel) ? nivel : PERFIL_POR_DEFECTO.nivel,
+      },
+      context: getContext(),
+    });
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Error al guardar el perfil.",
+    };
+  }
+
+  return { success: true as const };
+}
+
+/** ADR-38 · Reemplaza el calendario de competencias del macrociclo. */
+export async function guardarCompetenciasAction(formData: FormData) {
+  const cc = getString(formData, "cc");
+  const id = getInt(formData, "id");
+  const raw = getString(formData, "competencias");
+
+  if (!cc || !id) {
+    return { error: "Faltan datos para guardar las competencias." };
+  }
+
+  const persona = await getPersona(cc);
+  if (!persona) {
+    return { error: "Persona no encontrada." };
+  }
+
+  let parsed: Array<{ nombre?: unknown; fecha?: unknown; importancia?: unknown }>;
+  try {
+    parsed = raw ? (JSON.parse(raw) as typeof parsed) : [];
+  } catch {
+    return { error: "Formato de competencias inválido." };
+  }
+
+  const competencias = parsed
+    .map((item) => {
+      const fecha =
+        typeof item.fecha === "string" ? parseDateInput(item.fecha) : null;
+      if (!fecha) return null;
+
+      return {
+        nombre:
+          typeof item.nombre === "string" && item.nombre.trim() !== ""
+            ? item.nombre.trim()
+            : "Competencia",
+        fecha,
+        importancia:
+          item.importancia === "principal"
+            ? ("principal" as const)
+            : ("secundaria" as const),
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  try {
+    await guardarCompetencias({
+      id,
+      personaId: persona.id,
+      competencias,
+      context: getContext(),
+    });
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error al guardar las competencias.",
+    };
+  }
+
+  return { success: true as const };
+}
+
 export async function guardarPasoObjetivoFechasAction(formData: FormData) {
   const cc = getString(formData, "cc");
   const id = getInt(formData, "id");
@@ -100,7 +218,6 @@ export async function guardarPasoObjetivoFechasAction(formData: FormData) {
   const objetivoDetalle = getString(formData, "objetivoDetalle");
   const fechaInicioRaw = getString(formData, "fechaInicio");
   const fechaFinRaw = getString(formData, "fechaFin");
-  const fechaCompetenciaRaw = getString(formData, "fechaCompetencia");
 
   if (!cc || !id || !isObjetivoTipo(objetivoTipo)) {
     redirect("/atletas");
@@ -111,12 +228,8 @@ export async function guardarPasoObjetivoFechasAction(formData: FormData) {
 
   const fechaInicio = parseDateInput(fechaInicioRaw);
   const fechaFin = parseDateInput(fechaFinRaw);
-  const fechaCompetencia = fechaCompetenciaRaw
-    ? parseDateInput(fechaCompetenciaRaw)
-    : undefined;
-
   if (!fechaInicio || !fechaFin) {
-    redirectToWizard(cc, id, 1);
+    redirectToWizard(cc, id, PASO_WIZARD.objetivo);
   }
 
   const macrociclo = await prisma.macrociclo.findUnique({
@@ -131,12 +244,14 @@ export async function guardarPasoObjetivoFechasAction(formData: FormData) {
     objetivoDetalle,
     fechaInicio: fechaInicio,
     fechaFin: fechaFin,
-    fechaCompetencia: fechaCompetencia ?? undefined,
+    // M-03/ADR-41: `fechaCompetencia` ya no llega desde este paso. La fuente
+    // única es el calendario del paso de perfil, que la repuebla con la
+    // primera competencia principal.
     pasoActual: macrociclo.pasoActual,
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 2);
+  redirectToWizard(cc, id, PASO_WIZARD.perfil);
 }
 
 export async function guardarMedidasAction(formData: FormData) {
@@ -154,10 +269,10 @@ export async function guardarMedidasAction(formData: FormData) {
   try {
     medidas = JSON.parse(medidasRaw) as MedidasSnapshot;
   } catch {
-    redirectToWizard(cc, id, 3);
+    redirectToWizard(cc, id, PASO_WIZARD.rm);
   }
 
-  if (!medidas) redirectToWizard(cc, id, 2);
+  if (!medidas) redirectToWizard(cc, id, PASO_WIZARD.rm);
 
   const macrociclo = await prisma.macrociclo.findUnique({
     where: { id, personaId: persona.id },
@@ -173,7 +288,7 @@ export async function guardarMedidasAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 3);
+  redirectToWizard(cc, id, PASO_WIZARD.rm);
 }
 
 export async function guardarRmAction(formData: FormData) {
@@ -197,7 +312,7 @@ export async function guardarRmAction(formData: FormData) {
     },
   });
 
-  if (!sesion) redirectToWizard(cc, id, 2);
+  if (!sesion) redirectToWizard(cc, id, PASO_WIZARD.rm);
 
   const rmSnapshot = {
     sesionId: sesion.id,
@@ -238,7 +353,7 @@ export async function guardarRmAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 3);
+  redirectToWizard(cc, id, PASO_WIZARD.vo2max);
 }
 
 export async function guardarVo2maxAction(formData: FormData) {
@@ -255,14 +370,14 @@ export async function guardarVo2maxAction(formData: FormData) {
 
   if (metodo === "cooper") {
     const distancia = getNumber(formData, "distanciaMetros");
-    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 3);
+    if (!distancia || distancia <= 0) redirectToWizard(cc, id, PASO_WIZARD.vo2max);
     const valor = (distancia - 504.9) / 44.73;
     vo2max = { metodo, distanciaMetros: distancia, valor };
   } else {
     const etapa = getNumber(formData, "etapa");
 
     if (!etapa || etapa < 1 || !Number.isInteger(etapa)) {
-      redirectToWizard(cc, id, 3);
+      redirectToWizard(cc, id, PASO_WIZARD.vo2max);
     }
 
     const etapaFinal = etapa as number;
@@ -287,7 +402,7 @@ export async function guardarVo2maxAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 4);
+  redirectToWizard(cc, id, PASO_WIZARD.estructura);
 }
 
 export async function omitirVo2maxAction(formData: FormData) {
@@ -304,18 +419,12 @@ export async function omitirVo2maxAction(formData: FormData) {
   });
   if (!macrociclo) redirect("/atletas");
 
-  redirectToWizard(cc, id, 4);
+  redirectToWizard(cc, id, PASO_WIZARD.estructura);
 }
 
 type PeriodizacionPayload = {
   cc: string;
   id: number;
-  periodos: PeriodoInput[];
-  etapasPorPeriodo: Record<
-    TipoPeriodo,
-    { tipo: TipoEtapa; porcentaje: number }[]
-  >;
-  mesociclos: MesocicloInput[];
   semanas: SemanaInput[];
 };
 
@@ -324,19 +433,12 @@ async function parsePeriodizacionFormData(
 ): Promise<PeriodizacionPayload | { error: string }> {
   const cc = getString(formData, "cc");
   const id = getInt(formData, "id");
-  const periodosRaw = getString(formData, "periodos");
-  const etapasRaw = getString(formData, "etapas");
-  const mesociclosRaw = getString(formData, "mesociclos");
   const semanasRaw = getString(formData, "semanas");
 
-  if (
-    !cc ||
-    !id ||
-    !periodosRaw ||
-    !etapasRaw ||
-    !mesociclosRaw ||
-    !semanasRaw
-  ) {
+  // ADR-37: la estructura (periodos, etapas, mesociclos) ya no llega desde el
+  // formulario — se deriva del perfil deportivo guardado. Del formulario solo
+  // vienen los valores de carga por semana.
+  if (!cc || !id || !semanasRaw) {
     return { error: "Faltan datos para guardar la periodización." };
   }
 
@@ -345,29 +447,18 @@ async function parsePeriodizacionFormData(
     return { error: "Persona no encontrada." };
   }
 
-  let periodos: PeriodoInput[] | null = null;
-  let etapasPorPeriodo: Record<
-    TipoPeriodo,
-    { tipo: TipoEtapa; porcentaje: number }[]
-  > | null = null;
-  let mesociclos: MesocicloInput[] | null = null;
   let semanas: SemanaInput[] | null = null;
 
   try {
-    periodos = JSON.parse(periodosRaw) as PeriodoInput[];
-    etapasPorPeriodo = JSON.parse(etapasRaw) as typeof etapasPorPeriodo;
-    mesociclos = JSON.parse(mesociclosRaw) as MesocicloInput[];
     semanas = JSON.parse(semanasRaw) as SemanaInput[];
   } catch {
     return { error: "Formato de datos inválido." };
   }
 
-  if (!periodos || !etapasPorPeriodo || !mesociclos || !semanas) {
+  if (!semanas) {
     return { error: "Formato de datos inválido." };
   }
 
-  const periodosValidos = periodos.filter((p) => isTipoPeriodo(p.tipo));
-  const mesociclosValidos = mesociclos.filter((m) => isTipoMesociclo(m.tipo));
   const semanasValidas = semanas.filter(
     (s) =>
       Number.isInteger(s.numeroSemana) &&
@@ -387,9 +478,6 @@ async function parsePeriodizacionFormData(
     await guardarPeriodizacion({
       id,
       personaId: persona.id,
-      periodos: periodosValidos,
-      etapasPorPeriodo,
-      mesociclos: mesociclosValidos,
       semanas: semanasValidas,
       pasoActual: macrociclo.pasoActual,
       context: getContext(),
@@ -405,9 +493,6 @@ async function parsePeriodizacionFormData(
   return {
     cc,
     id,
-    periodos: periodosValidos,
-    etapasPorPeriodo,
-    mesociclos: mesociclosValidos,
     semanas: semanasValidas,
   };
 }
@@ -420,11 +505,11 @@ export async function guardarPeriodizacionAction(formData: FormData) {
     const id = getInt(formData, "id");
     if (!cc || !id) redirect("/atletas");
     redirect(
-      `/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}&paso=9&error=${encodeURIComponent(result.error)}`,
+      `/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}&paso=${PASO_WIZARD.semanas}&error=${encodeURIComponent(result.error)}`,
     );
   }
 
-  redirectToWizard(result.cc, result.id, 8);
+  redirectToWizard(result.cc, result.id, PASO_WIZARD.carga);
 }
 
 export async function guardarPeriodizacionSinRedirectAction(

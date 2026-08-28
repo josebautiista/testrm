@@ -10,6 +10,7 @@ import type {
   TipoPeriodo,
 } from "@/lib/macrociclo";
 import type { ObjetivoBloque, ProgresionBloque } from "@/lib/config/parametros";
+import type { PerfilDeportivo } from "./perfil";
 
 export type NivelAtleta = "beginner" | "intermediate" | "advanced";
 export type ConfianzaRm = "alta" | "media" | "baja";
@@ -24,11 +25,24 @@ export type AtletaContexto = {
   limitaciones?: string | null;
 };
 
+export type CompetenciaContexto = {
+  fecha: Date;
+  importancia: "principal" | "secundaria";
+  nombre?: string;
+};
+
 export type ObjetivoContexto = {
   tipo: ObjetivoTipo;
   fechaInicio: Date;
   fechaFin: Date;
   fechaCompetencia?: Date | null;
+  /**
+   * ADR-37 · Perfil deportivo. Sin él, el motor usa un perfil por defecto
+   * derivado de `tipo` (salud → sin competencia, competencia → pico único).
+   */
+  perfil?: PerfilDeportivo;
+  /** ADR-38 · Calendario real de competencias, para colocar el taper. */
+  competencias?: CompetenciaContexto[];
 };
 
 export type DisponibilidadContexto = {

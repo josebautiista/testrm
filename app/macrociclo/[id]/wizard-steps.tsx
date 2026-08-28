@@ -11,6 +11,7 @@ import { MesocicloCargaEditor } from "@/components/macrociclo/MesocicloCargaEdit
 import {
   type ObjetivoTipo,
   type TipoEtapa,
+  type SemanaCalculada,
   type TipoMesociclo,
   type TipoMicrociclo,
   type TipoPeriodo,
@@ -25,7 +26,20 @@ import {
   toISODate,
   velocidadLegerKmh,
 } from "@/lib/macrociclo";
-import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
+import {
+  calcularPeriodizacion,
+  contarSemanas,
+} from "@/lib/macrociclo-periodizacion";
+import {
+  construirEstructura,
+  modoCalendarioDe,
+  type PerfilDeportivo,
+} from "@/lib/planificacion/perfil";
+import type { CompetenciaPlan } from "@/lib/planificacion/taper";
+import {
+  estaSinConfigurar,
+  sugerirConfiguracionSemana,
+} from "@/lib/planificacion/sugerencia-semana";
 import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import {
   guardarRmAction,
@@ -153,7 +167,7 @@ export function PasoRm({
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200">
           Tu objetivo es Competencia, pero esta sesión usa el método de
           Estimación (indirecto). Se recomienda validar tu fuerza máxima con
-          el Protocolo Casas o el Test Nacleiro, que requieren experiencia
+          el Protocolo Casas o el Test de Naclerio, que requieren experiencia
           previa, antes de competir.
         </div>
       ) : null}
@@ -320,228 +334,8 @@ export function PasoVo2max({
   );
 }
 
-export function PasoPeriodos({
-  periodos,
-  setPeriodos,
-  onContinuar,
-}: {
-  periodos: Record<TipoPeriodo, number | "">;
-  setPeriodos: (value: Record<TipoPeriodo, number | "">) => void;
-  onContinuar: () => void;
-}) {
-  const total = TIPOS_PERIODO.reduce((sum, p) => sum + (periodos[p.value] || 0), 0);
 
-  return (
-    <div className="space-y-5">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-text-primary dark:text-white">
-          Periodos
-        </h2>
-        <p className="text-sm text-text-secondary">
-          Define el porcentaje del periodo preparatorio y competitivo. Deben sumar
-          100%.
-        </p>
-      </div>
 
-      <div className="space-y-4">
-        {TIPOS_PERIODO.map((p) => (
-          <label key={p.value} className="block space-y-2">
-            <span className="text-sm font-medium text-text-primary dark:text-white">
-              {p.label}
-            </span>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              value={periodos[p.value]}
-              onWheel={(e) => e.currentTarget.blur()}
-              onChange={(e) =>
-                setPeriodos({
-                  ...periodos,
-                  [p.value]: e.target.value === "" ? "" : Number(e.target.value),
-                })
-              }
-              className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-            />
-          </label>
-        ))}
-      </div>
-
-      <div
-        className={[
-          "rounded-2xl px-4 py-3 text-sm font-medium",
-          total === 100
-            ? "bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-200"
-            : "bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-200",
-        ].join(" ")}
-      >
-        Total: {total.toFixed(1)}%{" "}
-        {total === 100 ? "✓ Correcto" : `Faltan ${(100 - total).toFixed(1)}%`}
-      </div>
-
-      <PrimaryButton
-        type="button"
-        onClick={onContinuar}
-        disabled={total !== 100}
-      >
-        Continuar
-      </PrimaryButton>
-    </div>
-  );
-}
-
-export function PasoEtapas({
-  etapas,
-  setEtapas,
-  onContinuar,
-}: {
-  etapas: Record<TipoPeriodo, Record<TipoEtapa, number | "">>;
-  setEtapas: (value: Record<TipoPeriodo, Record<TipoEtapa, number | "">>) => void;
-  onContinuar: () => void;
-}) {
-  const totales = useMemo(() => {
-    return TIPOS_PERIODO.map((p) => ({
-      tipo: p.value,
-      total: ETAPAS_POR_PERIODO[p.value].reduce(
-        (sum, e) => sum + (etapas[p.value][e] || 0),
-        0,
-      ),
-    }));
-  }, [etapas]);
-
-  const valido = totales.every((t) => t.total === 100);
-
-  return (
-    <div className="space-y-5">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-text-primary dark:text-white">
-          Etapas
-        </h2>
-        <p className="text-sm text-text-secondary">
-          Distribuye cada periodo en sus etapas. Cada periodo debe sumar 100%.
-        </p>
-      </div>
-
-      {TIPOS_PERIODO.map((p) => {
-        const total = totales.find((t) => t.tipo === p.value)?.total ?? 0;
-        return (
-          <section key={p.value} className="space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-text-tertiary">
-              {p.label}
-            </h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {ETAPAS_POR_PERIODO[p.value].map((etapa) => (
-                <label key={etapa} className="block space-y-2">
-                  <span className="text-sm font-medium text-text-primary dark:text-white capitalize">
-                    {etapa}
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={etapas[p.value][etapa]}
-                    onWheel={(e) => e.currentTarget.blur()}
-                    onChange={(e) =>
-                      setEtapas({
-                        ...etapas,
-                        [p.value]: {
-                          ...etapas[p.value],
-                          [etapa]: e.target.value === "" ? "" : Number(e.target.value),
-                        },
-                      })
-                    }
-                    className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-                  />
-                </label>
-              ))}
-            </div>
-            <p
-              className={[
-                "text-sm font-medium",
-                total === 100 ? "text-green-600 dark:text-green-400" : "text-yellow-600 dark:text-yellow-400",
-              ].join(" ")}
-            >
-              Total {p.label.toLowerCase()}: {total.toFixed(1)}%
-            </p>
-          </section>
-        );
-      })}
-
-      <PrimaryButton type="button" onClick={onContinuar} disabled={!valido}>
-        Continuar
-      </PrimaryButton>
-    </div>
-  );
-}
-
-export function PasoMesociclos({
-  mesociclos,
-  setMesociclos,
-  onContinuar,
-}: {
-  mesociclos: Record<TipoMesociclo, number | "">;
-  setMesociclos: (value: Record<TipoMesociclo, number | "">) => void;
-  onContinuar: () => void;
-}) {
-  const total = ORDEN_MESES.reduce((sum, m) => sum + (mesociclos[m] || 0), 0);
-
-  return (
-    <div className="space-y-5">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-text-primary dark:text-white">
-          Mesociclos
-        </h2>
-        <p className="text-sm text-text-secondary">
-          Asigna el porcentaje de duración a cada mesociclo. La suma debe ser
-          100%.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        {ORDEN_MESES.map((tipo) => (
-          <label key={tipo} className="block space-y-2">
-            <span className="text-sm font-medium text-text-primary dark:text-white">
-              {MESES_POR_TIPO_LABEL[tipo]}
-            </span>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              value={mesociclos[tipo]}
-              onWheel={(e) => e.currentTarget.blur()}
-              onChange={(e) =>
-                setMesociclos({
-                  ...mesociclos,
-                  [tipo]: e.target.value === "" ? "" : Number(e.target.value),
-                })
-              }
-              className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-            />
-          </label>
-        ))}
-      </div>
-
-      <div
-        className={[
-          "rounded-2xl px-4 py-3 text-sm font-medium",
-          total === 100
-            ? "bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-200"
-            : "bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-200",
-        ].join(" ")}
-      >
-        Total: {total.toFixed(1)}%{" "}
-        {total === 100 ? "✓ Correcto" : `Faltan ${(100 - total).toFixed(1)}%`}
-      </div>
-
-      <PrimaryButton type="button" onClick={onContinuar} disabled={total !== 100}>
-        Continuar
-      </PrimaryButton>
-    </div>
-  );
-}
 
 function formatNumber(value: number): string {
   return Number(value).toLocaleString("es-CO", {
@@ -634,9 +428,9 @@ export function PasoSemanas({
   macrocicloId,
   fechaInicio,
   fechaFin,
-  periodos,
-  etapasPorPeriodo,
-  mesociclos,
+  perfil,
+  competencias,
+  diasDisponibles,
   semanasConfig,
   setSemanasConfig,
   semanasSeleccionadas,
@@ -649,18 +443,16 @@ export function PasoSemanas({
   macrocicloId: number;
   fechaInicio: Date;
   fechaFin: Date;
-  periodos: { tipo: TipoPeriodo; porcentaje: number | "" }[];
-  etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number | "" }[]>;
-  mesociclos: { tipo: TipoMesociclo; porcentaje: number | "" }[];
+  perfil: PerfilDeportivo;
+  competencias: CompetenciaPlan[];
+  /** ADR-43 · Base de la frecuencia propuesta. */
+  diasDisponibles: number;
   semanasConfig: Record<number, SemanaConfig>;
   setSemanasConfig: (value: Record<number, SemanaConfig>) => void;
   semanasSeleccionadas: number[];
   setSemanasSeleccionadas: (value: number[]) => void;
   resultadosRm: ResultadoRmCompleto[];
   buildPeriodizacionPayload: () => {
-    periodos: { tipo: TipoPeriodo; porcentaje: number }[];
-    etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number }[]>;
-    mesociclos: { tipo: TipoMesociclo; porcentaje: number }[];
     semanas: {
       numeroSemana: number;
       tipoMicrociclo: TipoMicrociclo;
@@ -763,24 +555,85 @@ export function PasoSemanas({
     }));
   }
 
+  /**
+   * ADR-43 · Configuración propuesta para una semana, derivada de su bloque.
+   * Reutiliza los mismos parámetros que el motor de planificación; aquí solo
+   * se traducen al formato del formulario.
+   */
+  function sugerenciaDe(semana: SemanaCalculada) {
+    return sugerirConfiguracionSemana({
+      objetivoBloque: semana.objetivoBloque,
+      indiceEnBloque: semana.indiceEnBloque,
+      totalSemanasBloque: semana.totalSemanasBloque,
+      factorVolumen: semana.factorVolumen,
+      factorIntensidad: semana.factorIntensidad,
+      tipoMicrociclo: semana.tipoMicrociclo,
+      diasDisponibles,
+    });
+  }
+
   const calculado = useMemo(() => {
     return calcularPeriodizacion({
       fechaInicio,
       fechaFin,
-      periodos: periodos.map((p) => ({ ...p, porcentaje: Number(p.porcentaje) })),
-      etapasPorPeriodo: {
-        preparatorio: etapasPorPeriodo.preparatorio.map((e) => ({
-          ...e,
-          porcentaje: Number(e.porcentaje),
-        })),
-        competitivo: etapasPorPeriodo.competitivo.map((e) => ({
-          ...e,
-          porcentaje: Number(e.porcentaje),
-        })),
-      },
-      mesociclos: mesociclos.map((m) => ({ ...m, porcentaje: Number(m.porcentaje) })),
+      estructura: construirEstructura(
+        perfil,
+        contarSemanas(fechaInicio, fechaFin),
+      ),
+      competencias,
+      modoCalendario: modoCalendarioDe(perfil),
+      frecuenciaDeload: perfil.nivel === "advanced" ? 3 : 4,
     });
-  }, [fechaInicio, fechaFin, periodos, etapasPorPeriodo, mesociclos]);
+  }, [competencias, fechaFin, fechaInicio, perfil]);
+
+  const semanasVacias = calculado.semanas.filter((semana) =>
+    estaSinConfigurar(
+      semanasConfig[semana.numeroSemana] ?? {
+        frecuencia: 0,
+        series: 0,
+        repeticiones: 0,
+        intensidad: 0,
+      },
+    ),
+  );
+
+  /**
+   * ADR-43 · Rellena la configuración de carga a partir del plan. Con
+   * `soloVacias` no toca ninguna semana que el entrenador ya haya ajustado:
+   * una sugerencia nunca debe pisar una decisión.
+   */
+  function aplicarSugerencias(soloVacias: boolean) {
+    const siguiente: Record<number, SemanaConfig> = { ...semanasConfig };
+
+    for (const semana of calculado.semanas) {
+      const actual = siguiente[semana.numeroSemana];
+      if (soloVacias && actual && !estaSinConfigurar(actual)) {
+        continue;
+      }
+
+      const sugerencia = sugerenciaDe(semana);
+      const base: SemanaConfig = actual ?? getSemanaConfigInicial();
+      const ejercicios = recalcularEjercicios(
+        base,
+        sugerencia.series,
+        sugerencia.repeticiones,
+        sugerencia.intensidad,
+      );
+
+      siguiente[semana.numeroSemana] = {
+        ...base,
+        tipoMicrociclo: semana.tipoMicrociclo,
+        frecuencia: sugerencia.frecuencia,
+        series: sugerencia.series,
+        repeticiones: sugerencia.repeticiones,
+        intensidad: sugerencia.intensidad,
+        ejercicios,
+        volumen: calcularVolumenTotal(ejercicios),
+      };
+    }
+
+    setSemanasConfig(siguiente);
+  }
 
   const payload = buildPeriodizacionPayload();
 
@@ -968,6 +821,40 @@ export function PasoSemanas({
         </p>
       </div>
 
+      <div className="space-y-2 rounded-2xl border border-gray-200 bg-bg-soft p-4 dark:border-white/10 dark:bg-bg-subtle">
+        <p className="text-sm font-semibold text-text-primary dark:text-white">
+          Rellenar automáticamente
+        </p>
+        <p className="text-sm leading-6 text-text-secondary">
+          Cada bloque del plan ya define a qué intensidad y con cuántas series
+          y repeticiones se trabaja, y cada semana lleva su factor de carga
+          (descarga, afinamiento, evaluación). Con eso se puede proponer la
+          configuración de las {calculado.semanas.length} semanas sin que
+          teclees nada. Puedes ajustar después lo que no cuadre.
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => aplicarSugerencias(true)}
+            className="rounded-2xl border border-transparent bg-text-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 dark:bg-white dark:text-black"
+          >
+            Rellenar las semanas vacías ({semanasVacias.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => aplicarSugerencias(false)}
+            className="rounded-2xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-text-primary transition hover:bg-bg-main dark:border-white/10 dark:text-white"
+          >
+            Recalcular todas
+          </button>
+        </div>
+        <p className="text-xs leading-5 text-text-tertiary">
+          «Rellenar las vacías» no toca nada de lo que ya hayas puesto.
+          «Recalcular todas» sí sobrescribe tus ajustes manuales, incluidos los
+          tipos de semana que hayas cambiado.
+        </p>
+      </div>
+
       <div className="space-y-4">
         {calculado.semanas.map((semana) => {
           const config = semanasConfig[semana.numeroSemana] ?? {
@@ -979,6 +866,12 @@ export function PasoSemanas({
             intensidad: 0,
             ejercicios: [],
           };
+          // Sin override, se muestra el tipo que calculó el plan: antes se
+          // mostraba "corriente" para todas las semanas.
+          const tipoDeSemana =
+            semanasConfig[semana.numeroSemana]?.tipoMicrociclo ??
+            semana.tipoMicrociclo;
+          const tipoModificado = tipoDeSemana !== semana.tipoMicrociclo;
           const seleccionada = semanasSeleccionadas.includes(
             semana.numeroSemana,
           );
@@ -1008,17 +901,46 @@ export function PasoSemanas({
                   {toISODate(semana.fechaInicio)} - {toISODate(semana.fechaFin)}
                 </p>
               </div>
+
+              {semana.notas ? (
+                <p className="mb-3 text-xs leading-5 text-text-tertiary">
+                  {semana.notas}
+                </p>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="block space-y-1">
                   <span className="text-xs text-text-secondary">Tipo</span>
+                  {/* ADR-44: el motor propone el tipo, pero el entrenador
+                      puede cambiarlo — conoce contextos que el plan no. Lo que
+                      elija manda al guardar, y los factores de carga se
+                      recalculan según el tipo que quede. */}
                   <SearchableSelect
-                    value={config.tipoMicrociclo}
+                    value={tipoDeSemana}
                     options={TIPOS_MICROCICLO}
                     onChange={(value) =>
                       updateSemana(semana.numeroSemana, "tipoMicrociclo", value)
                     }
                     ariaLabel={`Tipo de microciclo de la semana ${semana.numeroSemana}`}
                   />
+                  {tipoModificado ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateSemana(
+                          semana.numeroSemana,
+                          "tipoMicrociclo",
+                          semana.tipoMicrociclo,
+                        )
+                      }
+                      className="text-xs text-accent underline-offset-2 hover:underline"
+                    >
+                      Volver a «
+                      {TIPOS_MICROCICLO.find(
+                        (t) => t.value === semana.tipoMicrociclo,
+                      )?.label ?? semana.tipoMicrociclo}
+                      », que es lo que propone el plan
+                    </button>
+                  ) : null}
                 </div>
                 <label className="block space-y-1">
                   <span className="text-xs text-text-secondary">Frecuencia</span>
@@ -1182,13 +1104,8 @@ export function PasoSemanas({
       >
         <input type="hidden" name="cc" value={cc} />
         <input type="hidden" name="id" value={macrocicloId} />
-        <input type="hidden" name="periodos" value={JSON.stringify(payload.periodos)} />
-        <input type="hidden" name="etapas" value={JSON.stringify(payload.etapasPorPeriodo)} />
-        <input
-          type="hidden"
-          name="mesociclos"
-          value={JSON.stringify(payload.mesociclos)}
-        />
+        {/* ADR-37: la estructura la deriva el servidor del perfil deportivo;
+            del formulario solo salen los valores de carga por semana. */}
         <input type="hidden" name="semanas" value={JSON.stringify(payload.semanas)} />
 
         <FormSubmitButton pendingLabel="Guardando periodización...">
@@ -1203,10 +1120,12 @@ export function PasoCarga({
   cc,
   macrocicloId,
   mesociclos,
+  perfil,
   onContinuar,
 }: {
   cc: string;
   macrocicloId: number;
+  perfil: PerfilDeportivo;
   mesociclos: Array<{
     id: number;
     tipo: string;
@@ -1300,6 +1219,7 @@ export function PasoCarga({
             frecuencia: s.frecuencia,
           }))}
           cargaInicial={mesociclo.carga}
+          perfil={perfil}
           onGuardado={() =>
             setGuardados((prev) => new Set([...Array.from(prev), mesociclo.id]))
           }
@@ -1377,9 +1297,6 @@ export function PasoRevision({
   vo2maxSnapshot: Vo2maxSnapshot | null;
   mesociclos: Array<{ id: number; tipo: string; carga: CargaMesocicloInputData | null }>;
   buildPeriodizacionPayload: () => {
-    periodos: { tipo: TipoPeriodo; porcentaje: number }[];
-    etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number }[]>;
-    mesociclos: { tipo: TipoMesociclo; porcentaje: number }[];
     semanas: {
       numeroSemana: number;
       tipoMicrociclo: TipoMicrociclo;
@@ -1449,62 +1366,55 @@ export function PasoRevision({
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-subtle">
-        <p className="text-sm text-text-secondary">Periodos y etapas</p>
-        <div className="mt-2 space-y-3">
-          {payload.periodos.map((periodo) => (
-            <div key={periodo.tipo}>
-              <p className="font-medium text-text-primary dark:text-white">
-                {TIPOS_PERIODO.find((t) => t.value === periodo.tipo)?.label ??
-                  periodo.tipo}
-                : {periodo.porcentaje}%
-              </p>
-              <ul className="mt-1 space-y-0.5">
-                {payload.etapasPorPeriodo[periodo.tipo].map((etapa) => (
-                  <li
-                    key={etapa.tipo}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="text-text-secondary">
-                      {MESES_POR_ETAPA_LABEL[etapa.tipo]}
-                    </span>
-                    <span className="font-medium text-text-primary dark:text-white">
-                      {etapa.porcentaje}%
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
+        <p className="text-sm text-text-secondary">Estructura</p>
+        <p className="mt-1 text-sm leading-6 text-text-secondary">
+          {payload.semanas.length} semanas planificadas. Los periodos, etapas y
+          bloques se derivan del perfil deportivo y se pueden revisar en el paso
+          de Estructura.
+        </p>
+        <ul className="mt-3 space-y-1 text-sm">
+          {(() => {
+            const conteo = new Map<string, number>();
+            for (const semana of payload.semanas) {
+              conteo.set(
+                semana.tipoMicrociclo,
+                (conteo.get(semana.tipoMicrociclo) ?? 0) + 1,
+              );
+            }
+            return [...conteo.entries()].map(([tipo, total]) => (
+              <li key={tipo} className="flex items-center justify-between">
+                <span className="text-text-secondary">{tipo}</span>
+                <span className="font-medium tabular-nums text-text-primary dark:text-white">
+                  {total} {total === 1 ? "semana" : "semanas"}
+                </span>
+              </li>
+            ));
+          })()}
+        </ul>
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-subtle">
         <p className="text-sm text-text-secondary">Mesociclos</p>
         <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-          {payload.mesociclos.map((mesociclo) => {
-            const persistido = mesociclos.find(
-              (m) => m.tipo === mesociclo.tipo,
-            );
-            const tieneCarga = Boolean(persistido?.carga);
+          {mesociclos.map((mesociclo) => {
+            const tieneCarga = Boolean(mesociclo.carga);
             return (
               <li
-                key={mesociclo.tipo}
+                key={mesociclo.id}
                 className="flex items-center justify-between gap-3 text-sm"
               >
                 <span className="text-text-secondary">
-                  {MESES_POR_TIPO_LABEL[mesociclo.tipo]}
+                  {MESES_POR_TIPO_LABEL[mesociclo.tipo as TipoMesociclo] ??
+                    mesociclo.tipo}
                 </span>
-                <span className="font-medium text-text-primary dark:text-white">
-                  {mesociclo.porcentaje}%{" "}
-                  <span
-                    className={
-                      tieneCarga
-                        ? "text-accent"
-                        : "text-text-tertiary"
-                    }
-                  >
-                    {tieneCarga ? "· ✓ carga" : "· pendiente"}
-                  </span>
+                <span
+                  className={
+                    tieneCarga
+                      ? "font-medium text-accent"
+                      : "font-medium text-text-tertiary"
+                  }
+                >
+                  {tieneCarga ? "✓ carga definida" : "carga pendiente"}
                 </span>
               </li>
             );
@@ -1568,13 +1478,8 @@ export function PasoRevision({
       <form action={guardarPeriodizacionAction} className="space-y-3">
         <input type="hidden" name="cc" value={cc} />
         <input type="hidden" name="id" value={macrocicloId} />
-        <input type="hidden" name="periodos" value={JSON.stringify(payload.periodos)} />
-        <input type="hidden" name="etapas" value={JSON.stringify(payload.etapasPorPeriodo)} />
-        <input
-          type="hidden"
-          name="mesociclos"
-          value={JSON.stringify(payload.mesociclos)}
-        />
+        {/* ADR-37: la estructura la deriva el servidor del perfil deportivo;
+            del formulario solo salen los valores de carga por semana. */}
         <input type="hidden" name="semanas" value={JSON.stringify(payload.semanas)} />
 
         <FormSubmitButton pendingLabel="Guardando periodización...">

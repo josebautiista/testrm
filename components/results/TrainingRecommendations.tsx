@@ -18,11 +18,31 @@ import {
   type UserLevel,
 } from "@/lib/user-level";
 
+/**
+ * Resumen serializable de la fase activa, resuelta en el servidor desde el
+ * mesociclo del macrociclo abierto que contiene la fecha de hoy
+ * (`lib/planificacion/fase.ts`, ADR-36).
+ */
+export type FaseActivaResumen = {
+  fase: TrainingFase;
+  objetivoBloque: string;
+  /** Nombre legible del mesociclo, p. ej. "Estabilizador". */
+  mesociclo: string;
+  posicion: number;
+  total: number;
+  diasRestantes: number;
+  fechaFin: string;
+  macrocicloId: number | null;
+  esBorrador: boolean;
+};
+
 type TrainingRecommendationsProps = {
   rm: number;
   autoLevel: TrainingLevel;
   initialOverride: UserLevel | null;
-  activePhase?: TrainingFase | null;
+  faseActiva?: FaseActivaResumen | null;
+  /** Distingue "no tienes plan" de "tu plan no cubre la fecha de hoy". */
+  tieneMacrocicloAbierto?: boolean;
 };
 
 const goals: Array<{ id: TrainingGoal; label: string }> = [
@@ -35,6 +55,16 @@ const FASE_LABELS: Record<TrainingFase, string> = {
   resistencia: "Resistencia",
   fuerza: "Fuerza máxima",
   hipertrofia: "Hipertrofia",
+};
+
+const OBJETIVO_BLOQUE_LABELS: Record<string, string> = {
+  fuerza_maxima: "fuerza máxima",
+  realizacion: "realización",
+  potencia: "potencia",
+  hipertrofia: "hipertrofia",
+  acumulacion: "acumulación",
+  resistencia_fuerza: "resistencia a la fuerza",
+  recuperacion: "recuperación",
 };
 
 const references = [
@@ -67,7 +97,8 @@ export function TrainingRecommendations({
   rm,
   autoLevel,
   initialOverride,
-  activePhase,
+  faseActiva,
+  tieneMacrocicloAbierto = false,
 }: TrainingRecommendationsProps) {
   const [overrideLevel, setOverrideLevel] = useState<UserLevel | null>(
     initialOverride,
@@ -93,7 +124,9 @@ export function TrainingRecommendations({
     return null;
   }
 
-  const activeGoals = new Set(getRecommendedGoalsForPhase(activePhase));
+  const activeGoals = new Set(
+    getRecommendedGoalsForPhase(faseActiva?.fase ?? null),
+  );
 
   const rows = goals.map((goal) => {
     const plan = getTrainingPlan(goal.id, resolvedLevel);
@@ -122,11 +155,58 @@ export function TrainingRecommendations({
           Basado en tu 1RM estimado
           <InfoTooltip text="Es el peso máximo que puedes levantar una sola vez" />
         </p>
-        {activePhase ? (
-          <p className="text-sm font-medium text-accent">
-            Tu fase actual es: {FASE_LABELS[activePhase]}
-          </p>
-        ) : null}
+        {faseActiva ? (
+          <div className="space-y-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-3">
+            <p className="text-sm font-medium text-accent">
+              Tu fase actual es: {FASE_LABELS[faseActiva.fase]}
+            </p>
+            <p className="text-sm leading-6 text-text-secondary">
+              Sale de tu plan, no de un valor fijo: hoy estás en el mesociclo{" "}
+              <strong className="font-semibold text-text-primary dark:text-white">
+                {faseActiva.mesociclo}
+              </strong>{" "}
+              ({faseActiva.posicion} de {faseActiva.total} de tu macrociclo),
+              cuyo objetivo de bloque es{" "}
+              {OBJETIVO_BLOQUE_LABELS[faseActiva.objetivoBloque] ??
+                faseActiva.objetivoBloque}
+              . Ese objetivo es el que define la orientación del entrenamiento.
+            </p>
+            <p className="text-xs leading-5 text-text-tertiary">
+              {faseActiva.diasRestantes > 0 ? (
+                <>
+                  El bloque termina el {faseActiva.fechaFin} (faltan{" "}
+                  {faseActiva.diasRestantes}{" "}
+                  {faseActiva.diasRestantes === 1 ? "día" : "días"}). Cuando
+                  empiece el siguiente mesociclo, la fase cambia sola: no hay
+                  nada que ajustar a mano.
+                </>
+              ) : (
+                <>
+                  Hoy es el último día del bloque ({faseActiva.fechaFin}). La
+                  fase cambiará con el siguiente mesociclo del plan.
+                </>
+              )}
+              {faseActiva.esBorrador ? (
+                <>
+                  {" "}
+                  Tu macrociclo todavía está en borrador, así que estas fechas
+                  pueden moverse.
+                </>
+              ) : null}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1 rounded-xl border border-gray-200 bg-bg-subtle px-3 py-3 dark:border-white/10">
+            <p className="text-sm font-medium text-text-primary dark:text-white">
+              No tienes una fase activa
+            </p>
+            <p className="text-sm leading-6 text-text-secondary">
+              {tieneMacrocicloAbierto
+                ? "Tienes un macrociclo abierto, pero la fecha de hoy no cae dentro de ninguno de sus mesociclos. Revisa las fechas del plan."
+                : "La fase de entrenamiento sale del mesociclo activo de tu macrociclo. Sin un macrociclo en curso no hay una orientación que destacar, así que abajo se muestran los tres objetivos sin resaltar ninguno."}
+            </p>
+          </div>
+        )}
       </header>
 
       <div className="rounded-xl border border-gray-200 bg-bg-main dark:border-white/6 dark:bg-bg-soft">
@@ -182,6 +262,14 @@ export function TrainingRecommendations({
           </tbody>
         </table>
       </div>
+
+      {faseActiva ? (
+        <p className="text-xs leading-5 text-text-tertiary">
+          La fila marcada como <strong>Actual</strong> es la que corresponde al
+          objetivo de tu bloque de hoy. Las otras dos siguen visibles para que
+          veas con qué cargas trabajarías en cada orientación.
+        </p>
+      ) : null}
 
       <div className="space-y-2 text-xs text-text-tertiary">
         <h4 className="font-semibold text-text-secondary">

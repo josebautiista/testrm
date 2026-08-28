@@ -10,13 +10,21 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
 import { getStrengthLevel } from "@/helpers/calculations";
 import { EXERCISE_NOTES } from "@/lib/ejercicios-config";
-import type { TrainingFase } from "@/lib/training";
 import {
   calculateRepetitionValue,
   calculateStrengthIndex,
-  getMaxFormulaRM,
 } from "@/lib/rm";
+import { calculateEpley } from "@/lib/rm/formulas";
+import { resolverFaseActiva } from "@/lib/planificacion/fase";
+import { MESES_POR_TIPO_LABEL, type TipoMesociclo } from "@/lib/macrociclo";
 import { getUserLevel, isUserLevel } from "@/lib/user-level";
+
+const formatoFechaBloque = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC", // las fronteras de mesociclo son columnas `@db.Date`
+});
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -78,7 +86,10 @@ function getFormulaRows(result: {
 
 function getMethodLabel(method: string) {
   if (method === "casas") return "Protocolo Casas";
-  if (method === "nacleiro") return "Test Nacleiro";
+  // "nacleiro" es la grafía de sesiones históricas (ADR-31).
+  if (method === "naclerio" || method === "nacleiro") {
+    return "Test de Naclerio";
+  }
   return "Estimación";
 }
 
@@ -137,10 +148,10 @@ export default async function SesionDetailPage({
     include: {
       persona: {
         select: {
+          id: true,
           cc: true,
           sexo: true,
           nivelOverride: true,
-          faseEntrenamiento: true,
         },
       },
       resultados: {
@@ -177,12 +188,49 @@ export default async function SesionDetailPage({
   const nivelOverride = isUserLevel(sesion.persona.nivelOverride)
     ? sesion.persona.nivelOverride
     : null;
-  const activePhase: TrainingFase | null =
-    sesion.persona.faseEntrenamiento === "resistencia" ||
-    sesion.persona.faseEntrenamiento === "fuerza" ||
-    sesion.persona.faseEntrenamiento === "hipertrofia"
-      ? sesion.persona.faseEntrenamiento
-      : null;
+  // ADR-36 · D-14: la fase sale del mesociclo del macrociclo abierto cuyo
+  // rango de fechas contiene hoy, no de `Persona.faseEntrenamiento` (que era
+  // un valor fijo escrito una sola vez en la primera sesión).
+  const macrocicloAbierto = await prisma.macrociclo.findFirst({
+    where: {
+      personaId: sesion.persona.id,
+      estado: { in: ["borrador", "activo"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      estado: true,
+      mesociclos: {
+        select: {
+          id: true,
+          tipo: true,
+          objetivoBloque: true,
+          fechaInicio: true,
+          fechaFin: true,
+          orden: true,
+        },
+        orderBy: { orden: "asc" },
+      },
+    },
+  });
+
+  const faseActiva = resolverFaseActiva(macrocicloAbierto?.mesociclos ?? []);
+  const faseResumen = faseActiva
+    ? {
+        fase: faseActiva.fase,
+        objetivoBloque: faseActiva.objetivoBloque,
+        mesociclo:
+          MESES_POR_TIPO_LABEL[faseActiva.tipoMesociclo as TipoMesociclo] ??
+          faseActiva.tipoMesociclo,
+        posicion: faseActiva.posicion,
+        total: faseActiva.total,
+        diasRestantes: faseActiva.diasRestantes,
+        fechaFin: formatoFechaBloque.format(faseActiva.fechaFin),
+        macrocicloId: macrocicloAbierto?.id ?? null,
+        esBorrador: macrocicloAbierto?.estado === "borrador",
+      }
+    : null;
+  const tieneMacrocicloAbierto = Boolean(macrocicloAbierto);
   const protocolSummary = getProtocolSummary(sesion.protocolData);
   const strengthIndex = calculateStrengthIndex(
     sesion.resultados.map((resultado) => ({
@@ -301,12 +349,17 @@ export default async function SesionDetailPage({
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {sesion.resultados.map((resultado) => {
-              // D-02/TASK-024: la estimación principal es la fórmula
-              // primaria (Epley) con su banda, no el máximo entre las 8
-              // fórmulas. rm1Estimado puede faltar en filas históricas
-              // previas al backfill (C-03); en ese caso se conserva el
-              // valor anterior como referencia.
-              const estimatedRM = resultado.rm1Estimado ?? getMaxFormulaRM(resultado);
+              // D-02/TASK-024 · H-13: la estimación principal es siempre la
+              // fórmula primaria (Epley) con su banda. `rm1Estimado` puede
+              // faltar en filas históricas previas al backfill (C-03); antes
+              // se caía a `getMaxFormulaRM`, que es exactamente el estimador
+              // sesgado que prohíbe el ADR-02. Ahora se recalcula Epley desde
+              // la carga y las repeticiones ya guardadas — el mismo criterio
+              // que usa `prisma/backfill-resultados.ts`.
+              const esHistoricoSinEstimacion = resultado.rm1Estimado === null;
+              const estimatedRM =
+                resultado.rm1Estimado ??
+                calculateEpley(resultado.carga, resultado.repeticiones);
               const formulaRows = getFormulaRows(resultado);
               const withoutLoad = resultado.ejercicio.esDeTiempo;
               const repetitionValue = calculateRepetitionValue(
@@ -377,11 +430,25 @@ export default async function SesionDetailPage({
                         compact
                       />
                       {resultado.rmMin !== null && resultado.rmMax !== null ? (
-                        <MetricRow
-                          label="Banda de incertidumbre"
-                          value={`${formatNumber(resultado.rmMin)} – ${formatNumber(resultado.rmMax)} kg`}
-                          compact
-                        />
+                        <>
+                          <MetricRow
+                            label="Banda de incertidumbre"
+                            value={`${formatNumber(resultado.rmMin)} – ${formatNumber(resultado.rmMax)} kg`}
+                            compact
+                          />
+                          <p className="text-xs leading-5 text-text-tertiary">
+                            Es el rango que dan las 8 fórmulas con los mismos
+                            datos. Mide cuánto discrepan entre sí, no un margen
+                            de error estadístico.
+                          </p>
+                        </>
+                      ) : null}
+                      {esHistoricoSinEstimacion ? (
+                        <p className="text-xs leading-5 text-text-tertiary">
+                          Sesión anterior al cálculo con banda: el 1RM se
+                          recalculó con la fórmula primaria a partir del peso y
+                          las repeticiones guardados.
+                        </p>
                       ) : null}
                       {resultado.confianza ? (
                         <MetricRow
@@ -396,10 +463,22 @@ export default async function SesionDetailPage({
                           compact
                         />
                       ) : null}
+                      {typeof resultado.rirReportado === "number" ? (
+                        <p className="text-xs leading-5 text-text-tertiary">
+                          Reportaste {resultado.rirReportado}{" "}
+                          {resultado.rirReportado === 1
+                            ? "repetición"
+                            : "repeticiones"}{" "}
+                          en reserva, así que el cálculo usó{" "}
+                          {resultado.repeticiones + resultado.rirReportado}{" "}
+                          repeticiones equivalentes al fallo.
+                        </p>
+                      ) : null}
                       {resultado.fueraDeRango ? (
                         <p className="text-xs text-amber-700 dark:text-amber-300">
-                          Repeticiones fuera de la ventana válida (3–10): esta
-                          estimación tiene menor certeza.
+                          Repeticiones fuera de la ventana válida: esta
+                          estimación tiene menor certeza y no reemplazó tu RM
+                          de trabajo.
                         </p>
                       ) : null}
                       {resultado.casas > 0 ? (
@@ -412,7 +491,7 @@ export default async function SesionDetailPage({
                       ) : null}
                       {resultado.nacleiro > 0 ? (
                         <MetricRow
-                          label="Test Nacleiro"
+                          label="Test de Naclerio"
                           value={`${formatNumber(resultado.nacleiro)} kg`}
                           tone="positive"
                           compact
@@ -439,7 +518,8 @@ export default async function SesionDetailPage({
                       rm={estimatedRM}
                       autoLevel={autoLevel}
                       initialOverride={nivelOverride}
-                      activePhase={activePhase}
+                      faseActiva={faseResumen}
+                      tieneMacrocicloAbierto={tieneMacrocicloAbierto}
                     />
                   </>
                 ) : null}

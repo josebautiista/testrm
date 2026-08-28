@@ -300,9 +300,11 @@ como convención propia — no se ha recalibrado ni inventado una fuente en este
 **Contexto.** `app/nueva-sesion/CasasProtocol.tsx` codifica 11 pasos con porcentajes
 (40%→115.8%) y descansos específicos.
 
-**Estado.** **Sin resolver**, misma situación que ADR-16. Se corrigió el defecto
-funcional (D-05: no se puede cerrar el protocolo sin pesos reales), pero los porcentajes
-y descansos en sí no tienen fuente documentada.
+**Estado.** **Sin resolver** en cuanto al origen: los porcentajes y descansos siguen sin
+fuente documentada. Se corrigieron los defectos funcionales (D-05: no se puede cerrar el
+protocolo sin pesos reales; H-07: hace falta marcar el levantamiento como completado) y
+la estructura se ajustó a las pautas de la NSCA en número de intentos y techo de carga
+(ver **ADR-32**).
 
 ---
 
@@ -310,9 +312,10 @@ y descansos en sí no tienen fuente documentada.
 
 **Contexto.** `lib/nacleiro.ts calculateInitialWeight`/`calculateKIES`.
 
-**Estado.** **Sin resolver**, misma situación. Se corrigieron los defectos (D-06:
-división por cero con `series=1`, redondeo a peso no cargable), pero la fórmula en sí
-sigue sin una referencia bibliográfica citada en el código.
+**Estado.** **Cerrado por ADR-31.** La fórmula KIES y `calculateInitialWeight` nunca
+tuvieron fuente porque no correspondían a ningún protocolo publicado: el test real de
+Naclerio son 8±2 series de 2–3 repeticiones con máxima aceleración y OMNI-RES. Se
+eliminó `lib/nacleiro.ts` y se implementó el protocolo original.
 
 ---
 
@@ -370,8 +373,9 @@ completar más repeticiones a un mismo %1RM, sobre todo en tren inferior, pero e
 diferencia **no está modelada** — documentarlo como "no existe" es más honesto que
 mantener un código que aparenta diferenciar sin hacerlo.
 
-**Qué haría falta.** Coeficientes específicos por sexo con respaldo bibliográfico
-(mismo tipo de vacío que ADR-16/17/18) antes de reintroducir la rama.
+**Qué haría falta.** Nada por el lado del sexo: **ADR-35** documenta que la evidencia
+(Nuzzo 2024) encuentra poca o ninguna influencia del sexo, la edad o el nivel, y que el
+moderador real es el **ejercicio**. El hueco pendiente se redefine allí.
 
 **Fecha.** 2026-08-27. **Estado.** Implementado (unificación); diferenciación real
 pendiente de investigación.
@@ -467,6 +471,758 @@ Q-01 (¿multi-entrenador?) sigue sin resolver — puede haber múltiples cuentas
 ve todos los atletas), que es lo que esa pregunta realmente plantea.
 
 **Fecha.** 2026-08-27. **Estado.** Implementado. Cobertura: `e2e/roles.spec.ts`.
+
+---
+
+## ADR-27 · El RIR reportado corrige la estimación puntual
+
+**Contexto.** `estimarRm` aceptaba `rirReportado` pero solo lo usaba para resolver la
+confianza: el valor de Epley se calculaba con las repeticiones *reportadas*. Además, el
+formulario de evaluación nunca pedía el RIR, así que la rama `confianza = "alta"` (que
+exige `reps <= 5 && rir <= 1`) era inalcanzable y el techo real del sistema era `"media"`.
+
+**Decisión.** Las fórmulas predictivas modelan repeticiones **hasta el fallo**. Si el
+atleta reporta RIR, las repeticiones efectivas son `repeticiones + rir` y ese es el valor
+que entra a Epley y a la banda. `fueraDeRango` y `noUtilizable` también se resuelven
+sobre las efectivas — una serie de 8 con 4 en reserva son 12 efectivas, y eso está fuera
+de la ventana de validez aunque "8" no lo estuviera.
+
+La **confianza**, en cambio, se sigue resolviendo sobre las repeticiones reportadas:
+describe la calidad del dato que entregó el atleta, no la aritmética de la fórmula.
+
+`app/nueva-sesion/EstimacionEjercicios.tsx` pide el RIR por ejercicio con una escala 0–4
+y lo persiste en `ResultadoEjercicio.rirReportado` (la columna ya existía sin uso).
+
+**Consecuencias.** Sin esta corrección Epley subestimaba sistemáticamente el 1RM de toda
+serie que no llegó al fallo — el caso normal en un atleta prudente. Por encima de 4 no se
+ofrece opción: la autopercepción de RIR pierde fiabilidad lejos del fallo.
+
+**Fuente.** El error medio al reportar RIR en sujetos entrenados al 75 % del 1RM es de
+0,65 ± 0,78 repeticiones, suficiente para corregir una estimación; empeora con cargas
+ligeras y lejos del fallo.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado. Cobertura: `lib/rm/estimacion.test.ts`.
+
+---
+
+## ADR-28 · Ventana de precisión [3,8] y test adaptativo
+
+**Contexto.** El flujo de estimación cargaba un porcentaje de la masa corporal y pedía
+"la mayor cantidad de repeticiones". En un principiante eso son 15, 20 o 30 repeticiones
+— exactamente la zona que ADR-03 marca `fueraDeRango` y luego `noUtilizable`. El sistema
+estaba construido para generar estimaciones malas y después etiquetarlas como malas.
+
+**Decisión.** Se añade `VENTANA_OPTIMA_TEST = [3, 8]`, distinta de la ventana de validez
+`[1, 10]` de ADR-03: aquella dice si el número se puede guardar, esta dice si el intento
+merece repetirse. `sugerirAjusteCarga()` invierte Epley hacia
+`REPETICIONES_OBJETIVO_TEST = 5`, **acota el salto a la banda NSCA** del tren
+correspondiente (5–10 % superior, 10–20 % inferior) y redondea al
+`Ejercicio.incrementoMinimoKg` real del equipo.
+
+La interfaz muestra el ajuste en vivo y ofrece un botón que aplica la carga sugerida y
+arranca el descanso de 2–3 minutos. Un intento fuera de ventana **se puede guardar**: se
+registra marcado como poco fiable y no reemplaza el `RmVigente`.
+
+**Consecuencias.** El test deja de ser de un solo intento y pasa a ser iterativo, que es
+como lo describe la NSCA (1RM alcanzado en 3–7 intentos).
+
+**Fuente.** Reynolds, Gordon & Robergs (2006), JSCR: el 5RM predice el 1RM con R² 0,974–0,915,
+mejor que 10RM y 20RM. La precisión cae ≈1,5 % por repetición por encima de 8.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado. Cobertura: `lib/rm/estimacion.test.ts`.
+
+---
+
+## ADR-29 · Cambio mínimo detectable antes de reemplazar un RM
+
+**Contexto.** ADR-11 establece que una evaluación *siempre* reemplaza el `RmVigente`. Con
+un CV test–retest mediano de 4,2 %, una diferencia menor a ~11,6 % entre dos tests es
+indistinguible del error de medición: un mal día baja el RM registrado y con él toda la
+prescripción de las semanas siguientes.
+
+**Decisión.** No se cambia la regla de ADR-11 (la evaluación sigue mandando), pero se
+expone el contexto: `compararConRmVigente()` calcula el delta contra el vigente y lo
+contrasta con `CAMBIO_MINIMO_DETECTABLE = 1,96 · √2 · CV ≈ 11,6 %`. Los protocolos
+directos muestran ese aviso en vivo antes de guardar, para que entrenador y atleta
+decidan con el dato delante en vez de aceptar el número en silencio.
+
+**Qué falta.** Calibrar el CV por atleta en vez de usar el mediano de la literatura, y
+pedir confirmación explícita del entrenador cuando un test baje el RM por encima del
+umbral. Queda como mejora, no como bloqueo.
+
+**Fuente.** Grgic et al. (2020), *Sports Medicine – Open*, revisión sistemática de 32
+estudios (n = 1595): ICC mediano 0,97; CV mediano 4,2 %.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado (aviso); calibración por atleta pendiente.
+
+---
+
+## ADR-30 · Un protocolo directo produce un `ResultadoEjercicio` y un RM medido
+
+**Contexto.** Dos defectos encadenados:
+
+1. El bucle que abre `RmVigente` en `actions/sesion.ts` recorre los resultados de la
+   sesión. En un protocolo directo el formulario no emitía `ejercicioIds`, así que no
+   había resultados y **el bucle no iteraba**: el RM medido por el método más preciso
+   moría en `Sesion.finalRM` y la planificación seguía usando la estimación. Además
+   `origen` estaba fijado a `"estimacion"`.
+2. `NacleiroTable` derivaba el RM del `targetWeight` (peso *teórico*) del último grupo
+   con repeticiones > 0. Los dos grupos finales valían 107,7 % y 115,8 % del RM tecleado
+   a mano: escribir "1" registraba un RM un 15,8 % superior sin que nadie levantara nada.
+   Es el mismo D-05 que se corrigió en Casas y quedó abierto aquí.
+
+**Decisión.**
+- Un protocolo directo exige elegir un `Ejercicio` del catálogo (antes era texto libre),
+  y genera un `ResultadoEjercicio` con `confianza: "alta"`, `formulaPrimaria:
+  "medicion_directa"` cuando el mejor intento fue de 1 repetición, y `RmVigente` con
+  `origen: "test_directo"`.
+- `resolverRmMedido()` (`lib/rm/protocolo.ts`) es la **única** fuente del RM de un
+  protocolo: el peso más alto entre los pasos con `pesoReal > 0`, `repsReales > 0` y
+  `completado === true`. Ni un peso objetivo, ni un intento fallido, ni una fila sin
+  marcar pueden convertirse en el RM de nadie.
+- Se añade la casilla explícita "completé el levantamiento con técnica válida" (H-07):
+  antes Casas tomaba `max()` de los pesos registrados sin saber si el intento salió.
+
+**Consecuencias.** `Sesion.estimatedRM` guarda ahora el RM de referencia con el que se
+armaron los pesos y `Sesion.finalRM` el realmente levantado; la diferencia entre ambos
+indica si la referencia estaba bien calibrada.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado. Cobertura: `lib/rm/protocolo.test.ts`.
+
+---
+
+## ADR-31 · Naclerio: grafía correcta y protocolo real — cierra ADR-18
+
+**Contexto.** ADR-18 quedó "sin resolver": `lib/nacleiro.ts` implementaba un peso inicial
+derivado de la fuerza relativa (`rel <= 1 → 0,3·RM`; `< 3 → 0,3·RM·rel`; si no
+`0,666·RM`), una progresión lineal "KIES", y a continuación los mismos escalones
+102,5 %→115,8 % de Casas. Ninguna fuente respalda eso, y el apellido estaba mal escrito.
+
+**Decisión.** El autor es Fernando **Naclerio**. Su test progresivo (Naclerio & Figueroa,
+2004) es: **8 ± 2 series de 2–3 repeticiones ejecutadas con máxima aceleración**, pausas
+de 2 a 5 minutos, y RPE **OMNI-RES 0–10** registrado al final de cada serie; series 1–2 al
+35–50 %, 3–4 al 55–65 %, 5–6 al 70–80 %, 7–8 al 85–95/100 %.
+
+`PASOS_NACLERIO` en `lib/rm/protocolo.ts` implementa exactamente eso. Se eliminan
+`lib/nacleiro.ts` (`calculateInitialWeight`, `calculateKIES`, `generateSeries`) y
+`app/nueva-sesion/NacleiroTable.tsx`.
+
+**Compatibilidad.** La columna `ResultadoEjercicio.nacleiro` y el valor
+`Sesion.rmMethod = "nacleiro"` de sesiones históricas **no se migran**: se siguen
+aceptando al leer y se muestran como "Test de Naclerio", pero el valor que se escribe
+desde ahora es `"naclerio"`. Evitar una migración de datos por una falta de ortografía es
+deliberado; el mapeo vive en `parseRMMethod` y `getMethodLabel`.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado. **Cierra ADR-18.**
+
+---
+
+## ADR-32 · Intentos máximos: 8±2 de Naclerio, 3–7 de la NSCA
+
+**Contexto.** El Casas anterior tenía 11 pasos, 7 de ellos ≥ 95 %, con escalones
+compuestos hasta el 115,8 % calculados sobre un RM teórico. La NSCA espera que el 1RM se
+alcance en 3–7 intentos; más allá, la fatiga hace que el test mida cansancio.
+
+**Decisión.**
+- Casas se reduce a 7 pasos (4 aproximaciones + 3 intentos máximos), sin pasos por encima
+  del 105 % del RM de referencia.
+- Los intentos extra (`construirIntentosExtra`, máximo 2 — el "± 2" de Naclerio) suben el
+  **incremento real del equipo** (`Ejercicio.incrementoMinimoKg`) sobre el peso realmente
+  levantado, no un porcentaje compuesto sobre un número teórico. Solo aparecen si el
+  último paso base salió completado.
+- `resolverRmMedido` cuenta los intentos máximos y marca
+  `excedeIntentosRecomendados` por encima de 7; la interfaz avisa y pide cerrar.
+
+**Nota sobre ADR-17.** Los porcentajes y descansos de Casas siguen **sin fuente
+bibliográfica** — eso no cambia. Lo que sí se corrigió es la estructura (número de
+intentos y el techo de carga), que sí tiene respaldo.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado. Cobertura: `lib/rm/protocolo.test.ts`.
+
+---
+
+## ADR-33 · Cribado de seguridad antes de un test máximo
+
+**Contexto.** El único gate hacia Casas/Naclerio era `trainingMonths < 4`, autorreportado
+en un campo numérico libre. Además, el texto de la interfaz afirmaba que "los tests de
+fuerza máxima requieren experiencia previa para evitar lesiones", que es más fuerte de lo
+que la evidencia sostiene: Grgic (2020) muestra que el 1RM es fiable **con o sin**
+familiarización, en no entrenados, adolescentes y mayores de 75.
+
+**Decisión.** Se conserva el umbral de 4 meses como política del producto —documentada
+como tal, no como afirmación clínica— y se añade un cribado explícito de cinco puntos que
+debe confirmarse para habilitar un protocolo máximo: diagnóstico cardiovascular o tensión
+no controlada, lesión activa en el patrón, dominio técnico del ejercicio, asistencia o
+topes de seguridad, y patrón respiratorio (no Valsalva).
+
+Si el cribado queda incompleto, el **método efectivo** vuelve a estimación sin borrar la
+selección del atleta: se bloquea, no se pierde lo elegido.
+
+**Qué falta.** Un PAR-Q completo persistido en `Persona`, en vez de una confirmación por
+sesión que no deja rastro.
+
+**Fuente.** Guías de evaluación de 1RM (ACI/NSW) sobre cribado, Valsalva y
+contraindicaciones; Grgic et al. (2020) sobre seguridad y fiabilidad.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado (confirmación por sesión).
+
+---
+
+## ADR-34 · Orden de la batería de evaluación y descanso entre ejercicios
+
+**Contexto.** El flujo de estimación listaba *todos* los ejercicios del catálogo en una
+pantalla, sin orden prescrito ni descanso entre ellos. Seis series a máximas repeticiones
+seguidas invalidan las últimas.
+
+**Decisión.** `ordenarParaEvaluacion()` ordena por masa muscular implicada (sentadilla →
+bisagra → empujes/tracciones verticales → horizontales → accesorio → core), y manda los
+ejercicios `esDeTiempo` al final: no producen RM y fatigan el core antes de los
+multiarticulares. La interfaz explica el orden y ofrece un descanso de 3 minutos entre
+ejercicios (NSCA: 3–5 min entre tests de ejercicios distintos).
+
+**Qué falta.** Un tope duro de ejercicios evaluables por sesión. Hoy se explica y se
+ofrece el descanso, pero no se impide encadenar los seis.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado (orden y descanso); tope pendiente.
+
+---
+
+## ADR-35 · Diferenciación por ejercicio, no por sexo — matiza ADR-22
+
+**Contexto.** ADR-22 eliminó una rama "femenino" que reimplementaba los mismos
+coeficientes, y dejó anotado que faltaba respaldo bibliográfico para reintroducirla.
+
+**Decisión.** Se mantiene: **no** hay diferenciación por sexo. La meta-regresión de Nuzzo
+et al. (2024, *Sports Medicine* 54:303–321; 269 estudios, 7.289 sujetos) encontró que
+sexo, edad y nivel de entrenamiento influyen poco o nada en la relación reps↔%1RM, y que
+el **ejercicio** es el único moderador con efecto real —hasta el punto de requerir tablas
+separadas para press de banca y prensa de piernas.
+
+Es decir: el hueco de ADR-22 no era el sexo, era el ejercicio.
+
+**Qué falta (no implementado aquí).** Curvas reps↔%1RM por ejercicio, o adoptar la
+ecuación dependiente del peso absoluto optimizada sobre 303.494 series y 388 ejercicios
+(`1RM = w · (1 + (r−1)^0,85 / (−2,55 + 4,58·ln w))`, SportRxiv 2026), que reduce la
+inconsistencia un 17–22 % frente a Epley/Brzycki y cuya mayor ventaja está en ejercicios
+ligeros y accesorios — justo donde esta app aplica hoy la fórmula clásica. Sería un
+cambio de estimador primario y por tanto un ADR propio, con backfill y verificación.
+
+Lo que sí se implementó del hallazgo: `resolverTren()` diferencia tren superior e inferior
+para los incrementos de carga entre intentos (ADR-28) y para el orden de la batería
+(ADR-34).
+
+**Fecha.** 2026-08-27. **Estado.** Decisión de alcance. **Matiza ADR-22.**
+
+---
+
+## ADR-36 · La fase de entrenamiento se deriva del mesociclo activo — cierra D-14
+
+**Contexto.** `Persona.faseEntrenamiento` se escribía en un único punto
+(`actions/sesion.ts`): al guardar la primera sesión, si el campo era `null`, se fijaba
+literalmente a `"resistencia"` con `faseInicioAt = new Date()`. Ningún otro punto del
+código lo volvía a escribir, y `faseInicioAt` no se leía en ninguna parte.
+
+El sistema que sí la movía —`PhaseProgressionBanner` (avance automático a los 60 días),
+`avanzarAFuerzaAction` y `updateFaseEntrenamientoAction`— se retiró en TASK-051 porque
+D-14 lo identificó como un **cuarto sistema de progresión paralelo** al macrociclo. Pero
+se retiró el mecanismo de avance y quedaron la escritura inicial y el lector en la
+interfaz. Resultado: *"Tu fase actual es: Resistencia"* era constante para todo atleta,
+para siempre, incluso con un macrociclo de fuerza máxima en curso. Y como
+`getRecommendedGoalsForPhase("resistencia")` devuelve `["endurance"]`, la tabla de
+recomendaciones resaltaba **Resistencia** con el badge "Actual" para todo el mundo.
+
+**Decisión.** `lib/planificacion/fase.ts` (dominio puro) resuelve la fase desde el plan:
+
+- `resolverFaseActiva(mesociclos, fecha)` devuelve el mesociclo del macrociclo abierto
+  cuyo rango `[fechaInicio, fechaFin]` contiene la fecha, con su posición en el
+  macrociclo y los días que faltan para cerrarlo.
+- `FASE_POR_OBJETIVO_BLOQUE` agrupa los siete `objetivoBloque` del motor en las tres
+  orientaciones de la interfaz: `fuerza_maxima`/`realizacion`/`potencia` → **fuerza**;
+  `hipertrofia`/`acumulacion` → **hipertrofia**; `resistencia_fuerza`/`recuperacion` →
+  **resistencia**. `recuperacion` cae en resistencia porque comparte su zona de
+  intensidad (50–65 % 1RM en `ZONAS_INTENSIDAD`): un bloque de descarga no se entrena
+  como uno de fuerza máxima. Un test verifica que el mapeo sigue siendo coherente con
+  esas zonas, para que no se desincronicen.
+- `resolverObjetivoBloque()` usa la columna `MacrocicloMesociclo.objetivoBloque` cuando
+  existe y, si falta (macrociclos anteriores a C-06/TASK-033, creados con el wizard
+  manual), la deriva del `tipo` con `OBJETIVO_BLOQUE_POR_MESOCICLO` — la misma tabla que
+  usa el motor de planificación, para no introducir un segundo criterio.
+- **Sin bloque vigente hoy devuelve `null`, y eso es información**: la interfaz distingue
+  "no tienes macrociclo abierto" de "tu plan no cubre la fecha de hoy", en vez de
+  inventar una fase.
+
+`actions/sesion.ts` deja de escribir `faseEntrenamiento`/`faseInicioAt`. Las columnas se
+conservan en el esquema (siguen marcadas como deprecadas) pero ya no tienen ni escritores
+ni lectores.
+
+**Zona horaria.** Las fronteras de mesociclo son columnas `@db.Date`: Prisma las devuelve
+a medianoche **UTC** y representan un día de calendario, no un instante. Compararlas con
+componentes locales adelantaba un día entero la frontera en cualquier zona con
+desplazamiento negativo (Colombia es UTC-5), con lo que el bloque habría cambiado un día
+antes de tiempo. `diaDeFechaPlana()` las lee en UTC; `diaDeInstante()` lee "hoy" en local,
+que es el día de calendario que le corresponde al atleta. Cubierto por test.
+
+**Consecuencias en la interfaz.** El indicador deja de ser decorativo y explica su
+procedencia: qué mesociclo es, cuál es su objetivo de bloque, en qué posición del
+macrociclo está, cuándo termina y que la fase cambiará sola con el siguiente bloque. Si
+el macrociclo está en borrador se advierte que las fechas pueden moverse.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado. **Cierra D-14.**
+Cobertura: `lib/planificacion/fase.test.ts`.
+
+---
+
+## ADR-37 · Perfil deportivo: un motor para cualquier deporte, y los tres periodos
+
+**Contexto.** El macrociclo no servía para "cualquier atleta de cualquier deporte" por
+cuatro razones concretas:
+
+1. `TipoPeriodo` solo tenía `preparatorio | competitivo`. **Faltaba el transitorio**, que
+   es el tercer periodo del plan anual estándar en toda la literatura (Matveyev,
+   Bompa/Haff). Sin él, terminar un macrociclo era un corte seco.
+2. `ORDEN_MESES` era una lista cerrada de 8 mesociclos, siempre los mismos y en el mismo
+   orden, con reparto porcentual hardcodeado y una única variante ("salud").
+3. La app **no sabía de qué deporte se trataba**: `objetivoTipo` era `salud|competencia`
+   y `objetivoDetalle` texto libre que no entraba en ningún cálculo.
+4. Periodos y mesociclos eran **dos distribuciones porcentuales independientes** sobre la
+   misma línea de tiempo. Nada garantizaba que el bloque "estabilizador" cayera dentro de
+   la etapa "específica" a la que pertenece, y el entrenador cuadraba tres conjuntos de
+   porcentajes a mano que debían sumar 100 cada uno.
+
+Además, como `distribuirSemanasPorMayorResto` solo garantizaba 1 semana por bloque, un
+macrociclo de 8 semanas generaba **8 bloques de 1 semana**.
+
+**Decisión — no se pregunta el deporte por su nombre.** Hay cientos, no escala, y el
+nombre no es computable. Se piden **tres descriptores** (`lib/planificacion/perfil.ts`),
+que son el *needs analysis* de la NSCA reducido a lo que realmente cambia el plan:
+
+| Descriptor | Valores | Qué decide |
+|---|---|---|
+| `capacidadDominante` | fuerza_potencia / resistencia / mixto_intermitente / tecnico_estetico | Qué objetivo de bloque predomina |
+| `estructuraCalendario` | pico_unico / doble_pico / temporada_larga / sin_competencia | Periodización simple, doble o de temporada |
+| `nivelAtleta` | beginner / intermediate / advanced | Si hay carga concentrada o no |
+
+Esto se apoya en un hallazgo consolidado: **ningún modelo de periodización es superior**.
+Los meta-análisis dan diferencias pequeñas entre lineal, ondulante y por bloques (bloques
+algo mejor en avanzados; ondulante algo mejor para 1RM; sin diferencia en principiantes),
+y la investigación 2019-2025 señala como determinante la existencia de variación
+estructurada, no el modelo concreto. Por eso el motor es el mismo para todos y lo que
+varía son estos parámetros.
+
+**Decisión — la estructura se deriva, no se cuadra.** `construirEstructura(perfil,
+totalSemanas)` produce la secuencia de bloques con sus semanas exactas, y **los periodos
+y etapas se derivan agrupando bloques consecutivos**: alinean por construcción.
+`lib/macrociclo-periodizacion.ts` solo traduce semanas a fechas. Desaparece toda una
+clase de errores de cuadre y tres pasos del asistente.
+
+**Reglas nuevas que esto habilita:**
+
+- **Mínimo 2 semanas por bloque** (Issurin: los efectos residuales de un bloque de
+  acumulación duran 12-30 días; uno de 1 semana no acumula nada). Si no caben todos, se
+  **descartan bloques por prioridad** —choque, específico, precompetitivo, estabilizador,
+  aproximación, desarrollador— y se explica cuál se quitó y por qué. Nunca se acortan.
+- **Transitorio de 2-4 semanas absolutas** (Bompa), reservadas antes del reparto
+  porcentual: un plan de un año no puede tener 8 semanas de descanso por proporción.
+- **Un macrociclo que solo reentrena y descansa se rechaza**: si tras los descartes no
+  sobrevive ningún bloque que desarrolle capacidad, se devuelve un error explícito con la
+  duración mínima necesaria en vez de generar un plan vacío de contenido.
+- `distribuirSemanasPorMayorResto` acepta `id`, no solo `tipo`. Sin eso no se pueden
+  repetir bloques, y una periodización doble necesita exactamente eso: dos
+  "competencia", dos "aproximacion", dos transitorios.
+
+**Los pesos por capacidad dominante son convención del proyecto**, derivada del principio
+de especificidad, no de una tabla publicada — misma honestidad que ADR-17. Lo que sí
+tiene respaldo es la estructura sobre la que actúan.
+
+**Cierre del macrociclo.** `cerrarMacrocicloLazy` cerraba un día después de
+`fechaCompetencia`: el atleta competía y al día siguiente su plan desaparecía, sin
+transitorio ni evaluación final. Ahora cierra al pasar `fechaFin`, que es donde termina
+el transitorio (`closedReason: "auto_fin_transitorio"`).
+
+**Esquema.** `Macrociclo` + `capacidadDominante`, `estructuraCalendario`, `nivelAtleta`;
+nuevo modelo `MacrocicloCompetencia`. Migración `20260827194606_perfil_deportivo_competencias`.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado.
+Cobertura: `lib/planificacion/perfil.test.ts` (incluye una prueba de propiedades sobre
+240 combinaciones de perfil × duración), `lib/macrociclo-periodizacion.test.ts`.
+
+---
+
+## ADR-38 · Taper y semanas de evaluación: de etiquetas a cálculo
+
+**Contexto.** La app tenía mesociclos llamados "aproximación" y "competencia", y un
+`TipoMicrociclo` que incluía `"evaluacion"`. Ninguno de los tres hacía nada:
+`MICROCICLO_BASE_POR_MESOCICLO` nunca producía una semana de evaluación, y no existía
+ningún cálculo de reducción de carga previa a competir. Eran etiquetas.
+
+Además `Macrociclo.fechaCompetencia` era **un único campo**. Con un solo campo no se
+puede representar una liga de cinco meses ni un año de doble pico — y es el calendario lo
+que determina si la periodización es simple, doble o múltiple.
+
+**Decisión — taper calculado** (`lib/planificacion/taper.ts`). El meta-análisis de
+Bosquet (27 estudios) es el respaldo más fuerte de toda la periodización: reducir el
+volumen entre **41 % y 60 %** durante ~2 semanas, **sin tocar intensidad ni frecuencia**,
+mejora el rendimiento en torno a un 2,2 %. Recortar más de un 60 % empeora el resultado, y
+mantener la intensidad pesa más que mantener el volumen.
+
+- `FACTORES_VOLUMEN_TAPER = [0.7, 0.45]`: la semana pegada a la competencia lleva el
+  recorte más agresivo (55 %, centro de la ventana de Bosquet) y la anterior un 30 %. La
+  progresión decreciente reproduce el descenso exponencial que el meta-análisis encontró
+  superior al escalonado.
+- `FACTOR_INTENSIDAD_TAPER = 1`, siempre. Es el error más común al afinar.
+- Solo las competencias **principales** reciben las 2 semanas; las secundarias, 1. Afinar
+  para cada fecha de una temporada larga equivale a no entrenar nunca.
+- `revisarTaper()` avisa —sin bloquear— cuando una competencia principal no deja espacio
+  para afinar, o cae fuera del rango del macrociclo.
+
+**Decisión — evaluaciones colocadas automáticamente.** Semana 1 (línea base), cada 10
+semanas (la recomendación habitual de seguimiento es retest cada 8-12) y la última semana
+del plan. La evaluación final es lo que permite cerrar el macrociclo comparando contra el
+punto de partida, con el cambio mínimo detectable de ADR-29 para no reportar ruido como
+mejora.
+
+**Decisión — calendario real.** Nuevo modelo `MacrocicloCompetencia` (nombre, fecha,
+importancia). `Macrociclo.fechaCompetencia` se conserva y se puebla con la primera
+competencia principal, porque el cierre automático y los planes antiguos dependen de él.
+
+**Precedencia entre tipos de semana**, de mayor a menor: competencia > taper > evaluación
+> descarga programada > tipo base del bloque. Una semana de competencia no se convierte en
+descarga, y un taper no se pisa con un deload: el taper *es* la reducción planificada.
+
+**Consecuencia en la interfaz.** El formulario ya no decide el tipo de semana: lo resuelve
+el motor contra el calendario, y cada semana guarda en `notas` la explicación de por qué
+es lo que es, que se muestra literalmente en el paso de Estructura.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado.
+Cobertura: `lib/planificacion/taper.test.ts`.
+
+---
+
+## ADR-39 · Fechas objetivo: un plan de salud también tiene fechas que importan
+
+**Contexto.** ADR-37 introdujo `estructuraCalendario = "sin_competencia"` para el objetivo
+salud, y la interfaz **ocultaba el calendario de fechas** en ese modo. El razonamiento era
+que sin competencias no hay nada que afinar. Pero eso dejaba fuera un caso real: alguien
+que entrena por salud sí puede tener fechas que le importan —un chequeo médico, un viaje,
+una caminata larga, una fecha en la que quiere sentirse de cierta forma— y el plan debería
+poder organizarse alrededor de ellas.
+
+Además, la pregunta de capacidad dominante estaba redactada solo para atletas
+(*"¿Qué capacidad domina en **tu deporte**?"*, con ejemplos de disciplinas en cada
+opción). Quien entrena por salud no tiene deporte y ninguna opción le hablaba: tenía que
+adivinar. Justo lo contrario del criterio de explicarlo todo en la vista.
+
+**Decisión — dos modos de calendario** (`ModoCalendario` en `lib/planificacion/taper.ts`):
+
+| | `"competencia"` | `"objetivo"` |
+|---|---|---|
+| Semana de la fecha | Competitiva (se compite, no se entrena) | **Evaluación** (se mide justo cuando importa) |
+| Afinamiento si es principal | 2 semanas (taper completo de Bosquet) | **1 semana** |
+| Afinamiento si es secundaria | 1 semana | 0 |
+
+El modo se deriva del perfil (`modoCalendarioDe`), no se guarda: es función de
+`estructuraCalendario === "sin_competencia"`, así que no hace falta columna nueva.
+
+**Por qué una sola semana de afinamiento y no dos.** Bajar algo el volumen antes de una
+fecha en la que quieres rendir tiene sentido aunque no compitas —llegas descansado sin
+perder forma—, pero el taper completo de dos semanas de Bosquet está medido sobre
+rendimiento competitivo. Aplicarlo a un chequeo médico sería tomarse la evidencia más en
+serio de lo que la evidencia dice.
+
+**Por qué la fecha objetivo se evalúa.** Es lo que la vuelve útil como hito: si marcas una
+fecha y no se mide nada ese día, la fecha no hace nada. Coexiste con las evaluaciones
+automáticas de ADR-38 (semana 1, cada 10, y la última).
+
+**Decisión — la pregunta de capacidad cambia de redacción, no de valores.**
+`CAPACIDADES_SALUD` ofrece las mismas cuatro opciones con etiquetas y ejemplos para quien
+no practica un deporte: "Ganar fuerza", "Ganar resistencia", "Mixto o equilibrado",
+"Movilidad y control". El motor no cambia; cambia cómo se pregunta. Un test verifica que
+ambos catálogos cubren exactamente los mismos valores y que ninguna descripción del
+catálogo de salud menciona "deporte".
+
+También se indica explícitamente que, sin competencias, la diferencia entre las cuatro
+capacidades es de una o dos semanas por bloque —porque la secuencia de salud no tiene
+bloques de potencia ni de realización, que es donde los multiplicadores muerden— y que
+"Mixto o equilibrado" es la opción segura si no se tiene claro.
+
+**Decisión — preselección desde el objetivo.** Si en el paso 1 se eligió objetivo
+`salud`, el calendario se preselecciona en "Sin competencia". No se bloquea: alguien puede
+entrenar por salud y aun así correr una carrera popular. Si el objetivo es salud y se
+elige un calendario con competencias, se avisa sin impedirlo.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado.
+Cobertura: `lib/planificacion/taper.test.ts`, `lib/planificacion/perfil.test.ts`.
+
+---
+
+## ADR-40 · La pregunta del calendario, formulada desde el usuario
+
+**Contexto.** ADR-39 arregló la redacción de la pregunta de capacidad para quien no
+practica un deporte, pero dejó intacta la del calendario. Tres de sus cuatro tarjetas
+estaban escritas desde dentro del mundo competitivo —"Un pico en el año: *una competencia
+principal manda sobre todas las demás*", "Dos picos", "Temporada larga tipo liga"— así que
+alguien que entrena por salud leía tres opciones que no le hablaban y una cuarta por
+descarte. Lo detectó el usuario al usarlo.
+
+Había además un error de orden: la pregunta de capacidad **cambia de redacción según la
+respuesta del calendario** (ADR-39), pero se mostraba antes que ella. El usuario veía la
+versión deportiva de la primera pregunta hasta que respondía la segunda.
+
+**Decisión — reordenar.** El calendario pasa a ser la pregunta 1 y la capacidad la 2. Una
+pregunta cuya redacción depende de otra tiene que ir después.
+
+**Decisión — formular desde lo que hace la persona.** La pregunta deja de ser "¿Cómo es tu
+calendario?" (que presupone que tienes uno) y pasa a ser **"¿Compites en algo?"**. Las
+etiquetas son respuestas, no vocabulario de periodización:
+
+| Antes | Ahora |
+|---|---|
+| Sin competencia | **No compito** |
+| Un pico en el año | **Tengo una fecha importante** |
+| Dos picos | **Tengo dos fechas separadas** |
+| Temporada larga tipo liga | **Compito seguido durante meses** |
+
+"No compito" pasa a ser la **primera** opción, no la última: es el caso más común en esta
+app. Y su descripción aclara explícitamente que se pueden fijar fechas igualmente, porque
+esa era la duda que motivó ADR-39.
+
+Los ejemplos incluyen deliberadamente casos no deportivos —"una prueba física de acceso",
+"dos carreras objetivo al año"—: querer rendir un día concreto no implica competir, y
+limitar los ejemplos a campeonatos volvía inalcanzables tres de las cuatro opciones para
+quien no es atleta federado.
+
+**Nota de método.** Los dos huecos que cierran ADR-39 y ADR-40 tienen la misma causa: se
+escribió la interfaz asumiendo un atleta de competencia y después se intentó acomodar el
+caso de salud por parches. Al añadir opciones nuevas conviene revisar que las que ya
+existían sigan teniendo sentido desde el caso nuevo, no solo que la nueva encaje.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado.
+Cobertura: `lib/planificacion/perfil.test.ts` (verifica que ninguna etiqueta use jerga,
+que la primera opción sea la de no competir, y que los ejemplos cubran casos no
+deportivos).
+
+---
+
+## ADR-41 · Revisión del flujo completo del macrociclo
+
+Auditoría del asistente entero buscando supuestos de competencia que dejaran fuera al
+objetivo salud. Cuatro hallazgos, uno de ellos ajeno a salud pero más grave que el resto.
+
+### M-04 · El transitorio caía **antes** de la competencia (crítico)
+
+El paso 1 hacía `setFechaFin(fechaCompetencia)`: el macrociclo terminaba el día de
+competir. Pero ADR-37 reserva el transitorio al final del plan, así que este ocupaba las
+últimas 2-4 semanas — que son exactamente las del taper y la competencia. Verificado en un
+plan de 24 semanas con competencia el 14-feb:
+
+```
+Bloques finales:  choque 3 · aproximación 3 · competencia 1 · transitorio 2
+Semanas finales:  22 taper · 23 taper · 24 competitivo
+```
+
+El bloque decía "descanso activo" mientras la semana decía "afinar y competir". La
+consecuencia real: **un macrociclo de competencia nunca tenía periodo transitorio**, que es
+justo la garantía que introdujo ADR-37.
+
+**Decisión.** `fechaFin` deja de igualarse a la fecha de competencia. El paso 1 pide
+siempre inicio y fin, y explica que hay que dejar 2-4 semanas después de la última
+competencia. `revisarEspacioTransitorio()` (`lib/planificacion/taper.ts`) comprueba la
+distancia entre la última competencia principal y `fechaFin`, y si no llega al mínimo
+avisa con la fecha concreta que debería usarse. Comprobado tras el arreglo: los periodos
+salen `preparatorio → competitivo → transitorio` y el transitorio queda después de
+competir.
+
+La comprobación normaliza ambas fechas con el mismo criterio a propósito: el resultado es
+una diferencia, así que cualquier desplazamiento de zona horaria se cancela mientras las
+dos entradas vengan del mismo origen.
+
+### M-03 · Dos escritores para `fechaCompetencia`
+
+El campo del paso 1 y el calendario del paso 2 escribían el mismo dato, y
+`guardarCompetencias` pisaba al primero sin que se viera. **Decisión:** el campo del paso 1
+desaparece; la fuente única es el calendario, que repuebla `fechaCompetencia` con la
+primera competencia principal para el cierre automático y la compatibilidad.
+
+### M-01 · Direcciones de carga de deporte de equipo para todos
+
+`DIRECCIONES_POR_DEFECTO` era siempre `físico · táctico · técnico · psicológico`. A quien
+entrena por salud, "entrenamiento táctico" no le dice nada; a un powerlifter tampoco. El
+paso de carga le pedía repartir porcentajes entre categorías que no aplican.
+
+**Decisión.** `direccionesPorDefectoPara(perfil)`:
+
+| Perfil | Direcciones iniciales |
+|---|---|
+| Sin competencia | físico · técnico |
+| Mixto o intermitente que compite | las cuatro |
+| Resto (fuerza-potencia, resistencia, técnico-estético) | físico · técnico · psicológico |
+
+El reparto inicial del volumen se **renormaliza a 100** sobre las direcciones que quedan.
+Se siguen pudiendo añadir o quitar a mano: esto solo cambia con cuáles se arranca.
+
+### M-02 · El detalle no mostraba el perfil
+
+`app/macrociclo/[id]/page.tsx` mostraba objetivo, rango, sesión RM y VO2max, pero no
+capacidad, calendario ni nivel — que son lo que determina toda la estructura — y seguía
+mostrando "Fecha de competencia" en singular. **Decisión:** se muestra el perfil completo y
+el calendario entero, con el título adaptado ("Fechas objetivo" o "Competencias").
+
+**Fecha.** 2026-08-27. **Estado.** Implementado.
+Cobertura: `lib/planificacion/taper.test.ts` (espacio para el transitorio),
+`lib/mesociclo-carga.test.ts` (direcciones por perfil y renormalización a 100).
+
+---
+
+## ADR-42 · Los pasos del asistente, en un solo sitio
+
+**Contexto.** ADR-37 insertó el paso de Perfil y fusionó los tres de porcentajes en uno,
+así que el asistente pasó de 9 pasos a 8 y **toda la numeración se desplazó**:
+
+| Paso | Antes | Ahora |
+|---|---|---|
+| Objetivo | 1 | 1 |
+| Perfil | — | 2 |
+| RM | 2 | 3 |
+| VO2max | 3 | 4 |
+| Estructura | 4-6 | 5 |
+| Semanas | 7 | 6 |
+| Carga | 8 | 7 |
+| Revisión | 9 | 8 |
+
+El número de cada paso estaba escrito como literal en cuatro sitios distintos —las
+redirecciones de `actions/macrociclo.ts`, el `pasoActual` de
+`services/macrociclo.service.ts`, el propio asistente y el *clamp* de
+`editar/page.tsx`— y ninguno se actualizó. Los síntomas aparecieron de uno en uno según
+el usuario avanzaba: guardar el perfil no pasaba al paso siguiente, guardar la sesión de
+RM devolvía al paso anterior, y al recargar se volvía al paso 1.
+
+**Decisión.** `PASO_WIZARD` y `TOTAL_PASOS_WIZARD` en `lib/macrociclo.ts` como fuente
+única. Todos los literales se sustituyen por la constante con nombre, así que insertar o
+mover un paso ya no obliga a recordar cuatro sitios.
+
+Un test bloquea la regresión estructural: los pasos deben ser consecutivos desde 1 sin
+huecos ni repetidos, el total debe coincidir, y el orden relativo debe seguir siendo el
+del flujo real (perfil antes que RM, estructura después de las evaluaciones, revisión al
+final).
+
+**Lección.** Es el mismo patrón que ADR-40: un cambio estructural correcto en el dominio
+dejó desactualizadas piezas periféricas que repetían un dato derivado. Cuando algo se
+repite en cuatro archivos, el arreglo no es actualizar los cuatro sino que dejen de
+repetirlo.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado. Cobertura: `lib/macrociclo.test.ts`.
+
+---
+
+## ADR-43 · El paso de Semanas propone en vez de preguntar
+
+**Contexto — dos problemas encadenados.**
+
+*Primero, un control muerto.* El paso de Semanas tenía un desplegable de tipo de
+microciclo por semana que arrancaba en `"corriente"` fijo, sin leer nunca el tipo que
+había calculado el paso de Estructura. Y desde ADR-38 el guardado ignora ese valor
+(`tipoMicrociclo: semanaCalculada.tipoMicrociclo`). Es decir: **mostraba un valor
+equivocado y además descartaba lo que el entrenador eligiera**. Debí quitarlo al cambiar
+el guardado; lo detectó el usuario al ver que los tipos de una pestaña no coincidían con
+los de la otra.
+
+*Segundo, trabajo manual evitable.* El paso pedía frecuencia, series, repeticiones,
+intensidad y volumen para cada semana —hasta 52 filas de cinco campos, todas arrancando en
+cero— cuando todo eso ya es derivable de datos que el plan tiene.
+
+**Relación entre los dos pasos.** Estructura define la **forma** (a qué bloque pertenece
+cada semana y qué tipo es, todo derivado y de solo lectura); Semanas define el
+**contenido** (qué se hace dentro). La confusión venía de que el contenido no sabía nada
+de la forma.
+
+**Decisión — el tipo lo muestra, no lo pregunta.** El desplegable se sustituye por el tipo
+calculado en solo lectura, con la explicación de la semana (`notas`) debajo. La fuente
+única es el motor.
+
+**Decisión — configuración propuesta.** `lib/planificacion/sugerencia-semana.ts` deriva la
+carga de cada semana:
+
+| Campo | Origen |
+|---|---|
+| Intensidad | `ZONAS_INTENSIDAD[objetivoBloque]` progresando en el bloque × `factorIntensidad` |
+| Series | `RANGOS_VOLUMEN[objetivoBloque]` progresando × `factorVolumen` |
+| Repeticiones | Centro de `repsMin..repsMax` de la zona |
+| Frecuencia | `Persona.diasDisponibles` (C-12) |
+| Ejercicios | `rmSnapshot` + la fórmula elegida, como ya hacía |
+
+**No reimplementa nada**: reutiliza `calcularIntensidadObjetivoPct` y
+`calcularSeriesObjetivo` de `prescripcion.ts`, las mismas que usa el motor de
+planificación. Introducir un segundo criterio de cálculo habría sido peor que el problema
+original.
+
+Para poder derivar esto, `SemanaCalculada` pasa a llevar el contexto que ya existía pero
+no se exponía: `objetivoBloque`, `indiceEnBloque`, `totalSemanasBloque`, `factorVolumen`,
+`factorIntensidad` y `esDeload`.
+
+**Decisión — la sugerencia nunca pisa una decisión.** Dos acciones explícitas en vez de
+autorrelleno silencioso: «Rellenar las semanas vacías (N)», que solo toca las que están en
+cero, y «Recalcular todas», que sobrescribe y lo advierte. Una semana vacía es la señal de
+"sin tocar" (`estaSinConfigurar`), así que no hace falta llevar estado extra de qué editó
+el entrenador.
+
+**Efecto lateral corregido.** El servicio no persistía `factorVolumen`/`factorIntensidad`/
+`esDeload`: se quedaban en su valor por defecto de 1, así que **el recorte del taper no
+llegaba a la base de datos** aunque el motor lo calculara. Ahora se guardan.
+
+**Alcance.** Esto acerca el asistente manual al motor M5, que `docs/PLAN-MAESTRO.md`
+describe como dos caminos que conviven (Estado Intermedio B). No se fusionan: el asistente
+**siembra** desde los mismos parámetros en vez de duplicar el trabajo a mano. Fusionarlos
+del todo sigue pendiente.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado.
+Cobertura: `lib/planificacion/sugerencia-semana.test.ts` (la propuesta cae siempre dentro
+de la zona e intervalo de volumen de su objetivo, el taper recorta series pero no
+intensidad, y sin bloque asignado no se inventa carga).
+
+---
+
+## ADR-44 · El tipo de semana: el motor propone, el entrenador dispone
+
+**Contexto.** ADR-38 puso el tipo de cada semana bajo control del motor, que lo resuelve
+contra el calendario de competencias. ADR-43 quitó el desplegable del formulario porque
+mostraba un valor equivocado y sus ediciones se descartaban al guardar. Correcto como
+arreglo del defecto, pero excesivo como decisión de producto: el entrenador conoce
+contextos que el plan no —una lesión, un viaje, un amistoso, una semana de exámenes— y
+debe poder marcar una semana como descarga aunque al motor no le toque.
+
+**Decisión.** El desplegable vuelve, con dos condiciones que lo distinguen del control
+muerto anterior:
+
+1. **Su valor por defecto es el tipo calculado**, no `"corriente"`. Una semana sin tocar
+   muestra lo mismo que el paso de Estructura.
+2. **El guardado lo respeta.** Si el valor que llega difiere del calculado, se trata como
+   decisión del entrenador y manda:
+
+```ts
+const tipoFinal = tipoSolicitado && isTipoMicrociclo(tipoSolicitado)
+  ? tipoSolicitado
+  : tipoPropuesto;
+```
+
+No hace falta columna nueva para saber si es un override: **es override si difiere de lo
+que el motor propone**, y el motor es determinista sobre los mismos datos.
+
+**Los factores siguen al tipo.** `factoresPorTipoMicrociclo()` deriva
+`factorVolumen`/`factorIntensidad`/`esDeload` del tipo que finalmente queda. Sin esto, una
+semana marcada a mano como taper se guardaría con factor de volumen 1 — es decir, sería
+una etiqueta sin efecto, que es justo el problema que ADR-38 vino a corregir. Un test
+verifica que los factores derivados coinciden con los que el motor asigna al mismo tipo.
+
+**Reversible.** Cuando el tipo difiere del propuesto, aparece un enlace que lo devuelve al
+valor del plan, nombrándolo. Y «Recalcular todas» los restablece todos, avisando de que
+también sobrescribe los tipos cambiados.
+
+**Lo que no cambia.** Los números (series, repeticiones, intensidad) **no** se recalculan
+al cambiar el tipo. Cambiar el tipo cambia el tipo; si el entrenador quiere además la
+carga correspondiente, «Recalcular todas» se la da. Recalcular en silencio al tocar un
+desplegable habría pisado ajustes deliberados.
+
+**Fecha.** 2026-08-27. **Estado.** Implementado. Cobertura: `lib/planificacion/taper.test.ts`.
 
 ---
 
