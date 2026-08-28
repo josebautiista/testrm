@@ -1,12 +1,15 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@prisma/client";
 
+import { prisma } from "@/lib/prisma";
 import { ICCSection } from "@/components/dashboard/ICCSection";
 import { IMCCard } from "@/components/dashboard/IMCCard";
+import { DashboardLevelCard } from "@/components/dashboard/DashboardLevelCard";
 import { DashboardSessionsSection } from "@/components/dashboard/DashboardSessionsSection";
+import { RetestReminderBanner } from "@/components/dashboard/RetestReminderBanner";
+import { evaluarVigencia } from "@/lib/rm/vigente";
 import { SummaryMetrics } from "@/components/dashboard/SummaryMetrics";
+import { DisponibilidadCard } from "@/components/dashboard/DisponibilidadCard";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { MetricRow } from "@/components/ui/MetricRow";
@@ -19,24 +22,7 @@ import {
   obtenerMacrocicloAbierto,
   obtenerMacrociclosPorPersona,
 } from "@/services/macrociclo.service";
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-function createPrismaClient() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not configured");
-  }
-
-  const adapter = new PrismaMariaDb(databaseUrl);
-  return new PrismaClient({ adapter });
-}
-
-const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+import { getUserLevel, isUserLevel } from "@/lib/user-level";
 
 function formatSessionCardDate(date: Date) {
   return new Intl.DateTimeFormat("es-ES", {
@@ -118,9 +104,14 @@ export default async function DashboardPage({
     resolvedSearchParams.deleted === "1" ||
     resolvedSearchParams.deleted === "true" ||
     resolvedSearchParams.deleted === "deleted";
+  const rawSesionId = resolvedSearchParams.sesionId;
+  const savedSesionId =
+    typeof rawSesionId === "string" && Number.isInteger(Number(rawSesionId))
+      ? Number(rawSesionId)
+      : undefined;
 
   if (!cc) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const persona = await prisma.persona.findUnique({
@@ -134,11 +125,17 @@ export default async function DashboardPage({
       talla: true,
       cintura: true,
       cadera: true,
+      nivelOverride: true,
+      mesesEntrenamiento: true,
+      diasDisponibles: true,
+      minutosPorSesion: true,
+      equipamiento: true,
+      limitaciones: true,
     },
   });
 
   if (!persona) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const sesiones = await prisma.sesion.findMany({
@@ -162,16 +159,48 @@ export default async function DashboardPage({
     },
   });
 
-  const [macrocicloAbierto, macrociclos] = await Promise.all([
+  const [macrocicloAbierto, macrociclos, ajustesPendientes, rmVigentesActivos] = await Promise.all([
     obtenerMacrocicloAbierto(persona.id),
     obtenerMacrociclosPorPersona(persona.id),
+    prisma.ajustePropuesto.count({ where: { personaId: persona.id, estado: "pendiente" } }),
+    prisma.rmVigente.findMany({
+      where: { personaId: persona.id, validoHasta: null },
+      include: { ejercicio: { select: { nombre: true } } },
+    }),
   ]);
+
+  // R-15/TASK-052: aviso de reevaluación por ejercicio, no por días desde la
+  // última sesión (D-01 también contaminaba este banner).
+  const rmsCaducados = rmVigentesActivos
+    .map((rm) => ({
+      ejercicioNombre: rm.ejercicio.nombre,
+      ...evaluarVigencia({ validoDesde: rm.validoDesde, confianza: rm.confianza }),
+    }))
+    .filter((rm) => rm.caducado);
 
   const progress = getProgressSummary(sesiones);
   const latestSession = sesiones[0];
   const imc = calculateIMC(persona);
   const imcClassification = getIMCClassification(imc);
   const newSessionHref = `/nueva-sesion?cc=${encodeURIComponent(cc)}`;
+
+  // D-01: ya no se deriva un "RM global" tomando el máximo entre ejercicios
+  // distintos (ver docs/PLAN-MAESTRO.md §0.2). Sesion.finalRM solo queda
+  // poblado cuando hay un único ejercicio de referencia (Casas/Nacleiro, o
+  // una evaluación de un solo ejercicio); en cualquier otro caso no hay un
+  // valor global válido y getUserLevel usa su valor por defecto seguro.
+  const latestGlobalRM =
+    typeof latestSession?.finalRM === "number" && latestSession.finalRM > 0
+      ? latestSession.finalRM
+      : 0;
+  const autoLevel = getUserLevel(latestGlobalRM, latestSession?.peso ?? null);
+  const nivelOverride = isUserLevel(persona.nivelOverride)
+    ? persona.nivelOverride
+    : null;
+
+  const latestSesionHref = latestSession
+    ? `/sesion/${latestSession.id}?cc=${encodeURIComponent(cc)}`
+    : null;
   const macrocicloResumen = macrocicloAbierto
     ? macrocicloAbierto.objetivoTipo === "competencia"
       ? `Competencia: ${new Intl.DateTimeFormat("es-ES", {
@@ -218,12 +247,44 @@ export default async function DashboardPage({
           masaCorporal={persona.masaCorporal}
           talla={persona.talla}
         />
+        <DisponibilidadCard
+          cc={persona.cc}
+          mesesEntrenamiento={persona.mesesEntrenamiento}
+          diasDisponibles={persona.diasDisponibles}
+          minutosPorSesion={persona.minutosPorSesion}
+          equipamiento={
+            Array.isArray(persona.equipamiento)
+              ? (persona.equipamiento as string[])
+              : []
+          }
+          limitaciones={persona.limitaciones}
+        />
       </header>
+
+      <RetestReminderBanner
+        rmsCaducados={rmsCaducados}
+        newSessionHref={newSessionHref}
+      />
+
+      <DashboardSessionsSection
+        sessions={sessionItems}
+        newSessionHref={newSessionHref}
+        cc={cc}
+        saved={saved}
+        deleted={deleted}
+        savedSesionId={savedSesionId}
+      />
+
+      <DashboardLevelCard
+        autoLevel={autoLevel}
+        nivelOverride={nivelOverride}
+        latestSesionHref={latestSesionHref}
+      />
 
       <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-            Nueva sesión de test de fuerza máxima (RM) 
+            Nueva sesión de test de fuerza máxima (RM)
           </h2>
           <p className="text-sm text-text-secondary">
             Determina tu fuerza máxima (RM) en diferentes ejercicios 
@@ -232,6 +293,16 @@ export default async function DashboardPage({
         </div>
         <PrimaryButton href={newSessionHref}>Crear nueva sesión</PrimaryButton>
       </section>
+
+      {ajustesPendientes > 0 ? (
+        <Link
+          href={`/ajustes?cc=${encodeURIComponent(cc)}`}
+          className="block rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 transition hover:bg-amber-100 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200 sm:p-5"
+        >
+          {ajustesPendientes} ajuste{ajustesPendientes === 1 ? "" : "s"} propuesto
+          {ajustesPendientes === 1 ? "" : "s"} esperando tu decisión →
+        </Link>
+      ) : null}
 
       <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
         <div className="space-y-1">
@@ -300,14 +371,6 @@ export default async function DashboardPage({
         )}
       </section>
 
-      <DashboardSessionsSection
-        sessions={sessionItems}
-        newSessionHref={newSessionHref}
-        cc={cc}
-        saved={saved}
-        deleted={deleted}
-      />
-
       <IMCCard imc={imc} classification={imcClassification} />
 
       <ICCSection cc={cc} sexo={persona.sexo as "hombre" | "mujer" | "masculino" | "femenino"} cintura={persona.cintura} cadera={persona.cadera} />
@@ -336,7 +399,7 @@ export default async function DashboardPage({
       </div>
 
       <PrimaryButton
-        href="/"
+        href="/atletas"
         className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
       >
         Cambiar usuario

@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import { NextResponse } from "next/server";
 
-import { createAuthToken, setAuthCookie } from "@/lib/auth";
+import { createAuthToken, isRole, setAuthCookie } from "@/lib/auth";
 import { ensureDefaultAdminUser } from "@/lib/bootstrap";
 import { prisma } from "@/lib/prisma";
 
@@ -57,9 +57,12 @@ export async function POST(request: Request) {
     );
   }
 
+  const role = isRole(user.role) ? user.role : "entrenador";
+
   const token = await createAuthToken({
     userId: user.id,
     username: user.username,
+    role,
   });
 
   const response = NextResponse.json({
@@ -67,6 +70,7 @@ export async function POST(request: Request) {
     user: {
       id: user.id,
       username: user.username,
+      role,
     },
   });
 

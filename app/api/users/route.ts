@@ -2,12 +2,13 @@ import bcrypt from "bcrypt";
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
-import { getAuthUserFromRequest } from "@/lib/auth";
+import { getAuthUserFromRequest, isRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type CreateUserBody = {
   username?: unknown;
   password?: unknown;
+  role?: unknown;
 };
 
 function normalizeText(value: unknown) {
@@ -18,11 +19,22 @@ function unauthorizedResponse() {
   return NextResponse.json({ error: "No autorizado." }, { status: 401 });
 }
 
+function forbiddenResponse() {
+  return NextResponse.json(
+    { error: "Solo un administrador puede gestionar usuarios." },
+    { status: 403 },
+  );
+}
+
 export async function GET(request: NextRequest) {
   const authUser = await getAuthUserFromRequest(request);
 
   if (!authUser) {
     return unauthorizedResponse();
+  }
+
+  if (authUser.role !== "admin") {
+    return forbiddenResponse();
   }
 
   const users = await prisma.user.findMany({
@@ -32,6 +44,7 @@ export async function GET(request: NextRequest) {
     select: {
       id: true,
       username: true,
+      role: true,
       createdAt: true,
     },
   });
@@ -46,6 +59,10 @@ export async function POST(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  if (authUser.role !== "admin") {
+    return forbiddenResponse();
+  }
+
   let body: CreateUserBody;
 
   try {
@@ -56,6 +73,7 @@ export async function POST(request: NextRequest) {
 
   const username = normalizeText(body.username).toLowerCase();
   const password = normalizeText(body.password);
+  const role = isRole(body.role) ? body.role : "entrenador";
 
   if (username.length < 3) {
     return NextResponse.json(
@@ -78,10 +96,12 @@ export async function POST(request: NextRequest) {
       data: {
         username,
         password: hashedPassword,
+        role,
       },
       select: {
         id: true,
         username: true,
+        role: true,
         createdAt: true,
       },
     });

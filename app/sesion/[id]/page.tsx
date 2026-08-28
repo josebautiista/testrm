@@ -8,10 +8,15 @@ import { UserLevelPersonalization } from "@/components/results/UserLevelPersonal
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
-import { calculateRepetitionValue, calculateStrengthIndex } from "@/lib/rm";
-import { getUserLevel } from "@/lib/user-level";
-
-const EXERCISES_WITHOUT_LOAD = new Set([4]);
+import { getStrengthLevel } from "@/helpers/calculations";
+import { EXERCISE_NOTES } from "@/lib/ejercicios-config";
+import type { TrainingFase } from "@/lib/training";
+import {
+  calculateRepetitionValue,
+  calculateStrengthIndex,
+  getMaxFormulaRM,
+} from "@/lib/rm";
+import { getUserLevel, isUserLevel } from "@/lib/user-level";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -47,28 +52,6 @@ function formatNumber(value: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(value);
-}
-
-function getEstimatedRM(result: {
-  epley: number;
-  brzycki: number;
-  lombardi: number;
-  lander: number;
-  oconnor: number;
-  mayhew: number;
-  wathen: number;
-  baechle: number;
-}) {
-  return Math.max(
-    result.epley,
-    result.brzycki,
-    result.lombardi,
-    result.lander,
-    result.oconnor,
-    result.mayhew,
-    result.wathen,
-    result.baechle,
-  );
 }
 
 function getFormulaRows(result: {
@@ -154,7 +137,10 @@ export default async function SesionDetailPage({
     include: {
       persona: {
         select: {
+          cc: true,
           sexo: true,
+          nivelOverride: true,
+          faseEntrenamiento: true,
         },
       },
       resultados: {
@@ -162,6 +148,7 @@ export default async function SesionDetailPage({
           ejercicio: {
             select: {
               nombre: true,
+              esDeTiempo: true,
             },
           },
         },
@@ -179,15 +166,23 @@ export default async function SesionDetailPage({
   const dashboardHref = cc
     ? `/dashboard?cc=${encodeURIComponent(cc)}`
     : "/dashboard";
+  // D-01/TASK-024: ya no se deriva un RM global tomando el máximo entre
+  // ejercicios distintos. sesion.finalRM solo queda poblado cuando es
+  // inequívoco (un único ejercicio evaluado, o un protocolo Casas/Nacleiro).
   const globalRM =
     typeof sesion.finalRM === "number" && sesion.finalRM > 0
       ? sesion.finalRM
-      : sesion.resultados.length > 0
-        ? Math.max(
-            ...sesion.resultados.map((resultado) => getEstimatedRM(resultado)),
-          )
-        : 0;
+      : 0;
   const autoLevel = getUserLevel(globalRM, sesion.peso);
+  const nivelOverride = isUserLevel(sesion.persona.nivelOverride)
+    ? sesion.persona.nivelOverride
+    : null;
+  const activePhase: TrainingFase | null =
+    sesion.persona.faseEntrenamiento === "resistencia" ||
+    sesion.persona.faseEntrenamiento === "fuerza" ||
+    sesion.persona.faseEntrenamiento === "hipertrofia"
+      ? sesion.persona.faseEntrenamiento
+      : null;
   const protocolSummary = getProtocolSummary(sesion.protocolData);
   const strengthIndex = calculateStrengthIndex(
     sesion.resultados.map((resultado) => ({
@@ -222,7 +217,7 @@ export default async function SesionDetailPage({
           {sesion.resultados.length > 0 ? (
             <MetricRow
               label="Indice de fuerza"
-              value={`${strengthIndex.total} · ${strengthIndex.label}`}
+              value={`${strengthIndex.total}% · ${strengthIndex.label}`}
               tone="positive"
               compact
             />
@@ -298,20 +293,31 @@ export default async function SesionDetailPage({
         )
       ) : (
         <div className="space-y-6">
-          <UserLevelPersonalization autoLevel={autoLevel} />
+          <UserLevelPersonalization
+            autoLevel={autoLevel}
+            initialOverride={nivelOverride}
+            cc={sesion.persona.cc}
+          />
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {sesion.resultados.map((resultado) => {
-              const estimatedRM = getEstimatedRM(resultado);
+              // D-02/TASK-024: la estimación principal es la fórmula
+              // primaria (Epley) con su banda, no el máximo entre las 8
+              // fórmulas. rm1Estimado puede faltar en filas históricas
+              // previas al backfill (C-03); en ese caso se conserva el
+              // valor anterior como referencia.
+              const estimatedRM = resultado.rm1Estimado ?? getMaxFormulaRM(resultado);
               const formulaRows = getFormulaRows(resultado);
-              const withoutLoad = EXERCISES_WITHOUT_LOAD.has(
-                resultado.ejercicioId,
-              );
+              const withoutLoad = resultado.ejercicio.esDeTiempo;
               const repetitionValue = calculateRepetitionValue(
                 resultado.repeticiones,
                 resultado.ejercicioId,
                 sesion.persona.sexo,
               );
+              const strengthLevel = withoutLoad
+                ? null
+                : getStrengthLevel(estimatedRM, sesion.peso ?? 0);
+              const pesoLevantado = resultado.carga - resultado.pesoEquipo;
 
               return (
                 <article
@@ -319,9 +325,16 @@ export default async function SesionDetailPage({
                   className="space-y-4 rounded-xl border border-gray-200 bg-bg-soft p-4 dark:border-white/6"
                 >
                 <header className="space-y-1">
-                  <h2 className="text-base font-semibold text-text-primary dark:text-white">
-                    {resultado.ejercicio.nombre}
-                  </h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base font-semibold text-text-primary dark:text-white">
+                      {resultado.ejercicio.nombre}
+                    </h2>
+                    {strengthLevel ? (
+                      <span className="rounded-full bg-bg-subtle px-2 py-0.5 text-xs font-semibold text-text-primary dark:text-white">
+                        {strengthLevel}
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-sm text-text-secondary">
                     {withoutLoad ? (
                       `${resultado.repeticiones} repeticiones en 1 minuto`
@@ -333,11 +346,22 @@ export default async function SesionDetailPage({
                       </>
                     )}
                   </p>
+                  {!withoutLoad && resultado.pesoEquipo > 0 ? (
+                    <p className="text-xs text-text-tertiary">
+                      Levantado: {formatNumber(pesoLevantado)} kg + Equipo:{" "}
+                      {formatNumber(resultado.pesoEquipo)} kg
+                    </p>
+                  ) : null}
+                  {EXERCISE_NOTES[resultado.ejercicioId] ? (
+                    <p className="text-xs text-text-tertiary">
+                      {EXERCISE_NOTES[resultado.ejercicioId]}
+                    </p>
+                  ) : null}
                 </header>
 
-                <Section title="Valor para indice de fuerza" className="space-y-2">
+                <Section title="Ponderación para índice de fuerza" className="space-y-2">
                   <MetricRow
-                    label="Valor"
+                    label="Ponderación"
                     value={String(repetitionValue)}
                     compact
                   />
@@ -345,36 +369,78 @@ export default async function SesionDetailPage({
 
                 {!withoutLoad ? (
                   <>
-                    <Section title="Estimaciones de peso máximo (1RM)" className="space-y-2">
-                      <div className="space-y-0.5">
-                        {formulaRows.map((formula) => (
-                          <MetricRow
-                            key={formula.label}
-                            label={formula.label}
-                            value={`${formatNumber(formula.value)} kg`}
-                            compact
-                          />
-                        ))}
-                        {resultado.casas > 0 ? (
-                          <MetricRow
-                            label="Protocolo Casas"
-                            value={`${formatNumber(resultado.casas)} kg`}
-                            tone="positive"
-                            compact
-                          />
-                        ) : null}
-                        {resultado.nacleiro > 0 ? (
-                          <MetricRow
-                            label="Test Nacleiro"
-                            value={`${formatNumber(resultado.nacleiro)} kg`}
-                            tone="positive"
-                            compact
-                          />
-                        ) : null}
-                      </div>
+                    <Section title="Resultado principal (1RM)" className="space-y-2">
+                      <MetricRow
+                        label="1RM estimado"
+                        value={`${formatNumber(estimatedRM)} kg`}
+                        tone="positive"
+                        compact
+                      />
+                      {resultado.rmMin !== null && resultado.rmMax !== null ? (
+                        <MetricRow
+                          label="Banda de incertidumbre"
+                          value={`${formatNumber(resultado.rmMin)} – ${formatNumber(resultado.rmMax)} kg`}
+                          compact
+                        />
+                      ) : null}
+                      {resultado.confianza ? (
+                        <MetricRow
+                          label="Confianza"
+                          value={
+                            resultado.confianza === "alta"
+                              ? "Alta"
+                              : resultado.confianza === "media"
+                                ? "Media"
+                                : "Baja"
+                          }
+                          compact
+                        />
+                      ) : null}
+                      {resultado.fueraDeRango ? (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          Repeticiones fuera de la ventana válida (3–10): esta
+                          estimación tiene menor certeza.
+                        </p>
+                      ) : null}
+                      {resultado.casas > 0 ? (
+                        <MetricRow
+                          label="Protocolo Casas"
+                          value={`${formatNumber(resultado.casas)} kg`}
+                          tone="positive"
+                          compact
+                        />
+                      ) : null}
+                      {resultado.nacleiro > 0 ? (
+                        <MetricRow
+                          label="Test Nacleiro"
+                          value={`${formatNumber(resultado.nacleiro)} kg`}
+                          tone="positive"
+                          compact
+                        />
+                      ) : null}
+                      <details className="mt-2 text-sm">
+                        <summary className="cursor-pointer text-text-secondary">
+                          Ver las 8 fórmulas
+                        </summary>
+                        <div className="mt-2 space-y-0.5">
+                          {formulaRows.map((formula) => (
+                            <MetricRow
+                              key={formula.label}
+                              label={formula.label}
+                              value={`${formatNumber(formula.value)} kg`}
+                              compact
+                            />
+                          ))}
+                        </div>
+                      </details>
                     </Section>
 
-                    <TrainingRecommendations rm={estimatedRM} level={autoLevel} />
+                    <TrainingRecommendations
+                      rm={estimatedRM}
+                      autoLevel={autoLevel}
+                      initialOverride={nivelOverride}
+                      activePhase={activePhase}
+                    />
                   </>
                 ) : null}
                 </article>
@@ -387,7 +453,7 @@ export default async function SesionDetailPage({
       <div className="space-y-4">
         <PrimaryButton href={dashboardHref}>Volver a mi panel</PrimaryButton>
         <PrimaryButton
-          href="/"
+          href="/atletas"
           className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
         >
           Cambiar usuario

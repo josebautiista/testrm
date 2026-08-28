@@ -3,13 +3,12 @@
 import { useEffect, useState } from "react";
 
 import InfoTooltip from "@/components/ui/InfoTooltip";
-import {
-  USER_LEVEL_OVERRIDE_EVENT,
-  USER_LEVEL_OVERRIDE_KEY,
-} from "@/components/ui/UserLevelSelector";
+import { USER_LEVEL_OVERRIDE_EVENT } from "@/components/ui/UserLevelSelector";
 import {
   calculateTrainingWeight,
+  getRecommendedGoalsForPhase,
   getTrainingPlan,
+  type TrainingFase,
   type TrainingGoal,
   type TrainingLevel,
 } from "@/lib/training";
@@ -21,7 +20,9 @@ import {
 
 type TrainingRecommendationsProps = {
   rm: number;
-  level: TrainingLevel;
+  autoLevel: TrainingLevel;
+  initialOverride: UserLevel | null;
+  activePhase?: TrainingFase | null;
 };
 
 const goals: Array<{ id: TrainingGoal; label: string }> = [
@@ -29,6 +30,12 @@ const goals: Array<{ id: TrainingGoal; label: string }> = [
   { id: "hypertrophy", label: "Hipertrofia" },
   { id: "endurance", label: "Resistencia" },
 ];
+
+const FASE_LABELS: Record<TrainingFase, string> = {
+  resistencia: "Resistencia",
+  fuerza: "Fuerza máxima",
+  hipertrofia: "Hipertrofia",
+};
 
 const references = [
   {
@@ -56,23 +63,16 @@ function formatPercentage(value: number) {
   return Math.round(value * 100);
 }
 
-function readOverrideLevel(): UserLevel | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const storedLevel = window.localStorage.getItem(USER_LEVEL_OVERRIDE_KEY);
-  return isUserLevel(storedLevel) ? storedLevel : null;
-}
-
 export function TrainingRecommendations({
   rm,
-  level,
+  autoLevel,
+  initialOverride,
+  activePhase,
 }: TrainingRecommendationsProps) {
-  const [overrideLevel, setOverrideLevel] = useState<UserLevel | null>(() =>
-    readOverrideLevel(),
+  const [overrideLevel, setOverrideLevel] = useState<UserLevel | null>(
+    initialOverride,
   );
-  const resolvedLevel = resolveUserLevel(level, overrideLevel);
+  const resolvedLevel = resolveUserLevel(autoLevel, overrideLevel);
 
   useEffect(() => {
     function handleOverrideChange(event: Event) {
@@ -82,24 +82,18 @@ export function TrainingRecommendations({
       );
     }
 
-    function handleStorageChange(event: StorageEvent) {
-      if (event.key === USER_LEVEL_OVERRIDE_KEY) {
-        setOverrideLevel(isUserLevel(event.newValue) ? event.newValue : null);
-      }
-    }
-
     window.addEventListener(USER_LEVEL_OVERRIDE_EVENT, handleOverrideChange);
-    window.addEventListener("storage", handleStorageChange);
 
     return () => {
       window.removeEventListener(USER_LEVEL_OVERRIDE_EVENT, handleOverrideChange);
-      window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 
   if (!Number.isFinite(rm) || rm <= 0) {
     return null;
   }
+
+  const activeGoals = new Set(getRecommendedGoalsForPhase(activePhase));
 
   const rows = goals.map((goal) => {
     const plan = getTrainingPlan(goal.id, resolvedLevel);
@@ -128,6 +122,11 @@ export function TrainingRecommendations({
           Basado en tu 1RM estimado
           <InfoTooltip text="Es el peso máximo que puedes levantar una sola vez" />
         </p>
+        {activePhase ? (
+          <p className="text-sm font-medium text-accent">
+            Tu fase actual es: {FASE_LABELS[activePhase]}
+          </p>
+        ) : null}
       </header>
 
       <div className="rounded-xl border border-gray-200 bg-bg-main dark:border-white/6 dark:bg-bg-soft">
@@ -153,9 +152,21 @@ export function TrainingRecommendations({
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-white/6">
             {rows.map((row) => (
-              <tr key={row.id}>
+              <tr
+                key={row.id}
+                className={
+                  activeGoals.has(row.id)
+                    ? "bg-accent/10"
+                    : undefined
+                }
+              >
                 <td className="px-3 py-3 font-medium text-text-primary dark:text-white">
                   {row.label}
+                  {activeGoals.has(row.id) ? (
+                    <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white">
+                      Actual
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-3 py-3 text-text-secondary">
                   {row.percentageLabel}

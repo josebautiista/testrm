@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -30,6 +30,7 @@ import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import {
   guardarRmAction,
   guardarVo2maxAction,
+  omitirVo2maxAction,
   guardarPeriodizacionAction,
   guardarPeriodizacionSinRedirectAction,
   activarMacrocicloAction,
@@ -41,6 +42,7 @@ type SesionRm = {
   peso: number | null;
   estimatedRM: number | null;
   finalRM: number | null;
+  rmMethod: string;
   resultados: Array<{
     ejercicioId: number;
     ejercicio: { nombre: string };
@@ -66,14 +68,20 @@ export function PasoRm({
   sesionesRm,
   sesionRmId,
   setSesionRmId,
+  objetivoTipo,
 }: {
   cc: string;
   macrocicloId: number;
   sesionesRm: SesionRm[];
   sesionRmId: number | "";
   setSesionRmId: (value: number | "") => void;
+  objetivoTipo: ObjetivoTipo;
 }) {
   const sugerida = sesionesRm[0];
+  const sesionSeleccionada = sesionesRm.find((s) => s.id === sesionRmId);
+  const mostrarAvisoCompetencia =
+    objetivoTipo === "competencia" &&
+    sesionSeleccionada?.rmMethod === "estimation";
 
   return (
     <form action={guardarRmAction} className="space-y-5">
@@ -141,6 +149,15 @@ export function PasoRm({
         ))}
       </div>
 
+      {mostrarAvisoCompetencia ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200">
+          Tu objetivo es Competencia, pero esta sesión usa el método de
+          Estimación (indirecto). Se recomienda validar tu fuerza máxima con
+          el Protocolo Casas o el Test Nacleiro, que requieren experiencia
+          previa, antes de competir.
+        </div>
+      ) : null}
+
       <div className="space-y-3">
         <UsarSesionRmButton disabled={!sesionRmId} />
 
@@ -162,8 +179,6 @@ export function PasoVo2max({
   setMetodo,
   cooperDistancia,
   setCooperDistancia,
-  directo,
-  setDirecto,
   legerEtapa,
   setLegerEtapa,
 }: {
@@ -173,12 +188,11 @@ export function PasoVo2max({
   setMetodo: (value: string) => void;
   cooperDistancia: string;
   setCooperDistancia: (value: string) => void;
-  directo: string;
-  setDirecto: (value: string) => void;
   legerEtapa: string;
   setLegerEtapa: (value: string) => void;
 }) {
   return (
+    <div className="space-y-5">
     <form action={guardarVo2maxAction} className="space-y-5">
       <input type="hidden" name="cc" value={cc} />
       <input type="hidden" name="id" value={macrocicloId} />
@@ -189,12 +203,13 @@ export function PasoVo2max({
           VO2Max
         </h2>
         <p className="text-sm text-text-secondary">
-          Registra el método de evaluación de capacidad aeróbica.
+          Registra el método de evaluación de capacidad aeróbica. Si prefieres
+          conocer tu VO2Max más adelante, puedes omitir este paso.
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        {["cooper", "directo", "leger"].map((m) => (
+      <div className="grid gap-3 sm:grid-cols-2">
+        {["cooper", "leger"].map((m) => (
           <label
             key={m}
             className={[
@@ -220,39 +235,29 @@ export function PasoVo2max({
       </div>
 
       {metodo === "cooper" ? (
-        <label className="block space-y-2">
-          <span className="text-sm font-medium text-text-primary dark:text-white">
-            Distancia en metros
-          </span>
-          <input
-            type="number"
-            name="distanciaMetros"
-            value={cooperDistancia}
-            onWheel={(e) => e.currentTarget.blur()}
-            onChange={(e) => setCooperDistancia(e.target.value)}
-            required
-            min="0"
-            step="1"
-            className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-          />
-        </label>
-      ) : metodo === "directo" ? (
-        <label className="block space-y-2">
-          <span className="text-sm font-medium text-text-primary dark:text-white">
-            VO2Max relativo (ml/kg/min)
-          </span>
-          <input
-            type="number"
-            name="valor"
-            value={directo}
-            onWheel={(e) => e.currentTarget.blur()}
-            onChange={(e) => setDirecto(e.target.value)}
-            required
-            min="0"
-            step="0.01"
-            className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-          />
-        </label>
+        <div className="space-y-2">
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-text-primary dark:text-white">
+              Distancia en metros
+            </span>
+            <input
+              type="number"
+              name="distanciaMetros"
+              value={cooperDistancia}
+              onWheel={(e) => e.currentTarget.blur()}
+              onChange={(e) => setCooperDistancia(e.target.value)}
+              required
+              min="0"
+              step="1"
+              className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
+            />
+          </label>
+          <p className="text-xs text-text-secondary">
+            Cómo se hace: corre la mayor distancia posible durante 12 minutos
+            continuos en una pista plana, sin detenerte, y registra la
+            distancia total recorrida.
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
           <label className="block space-y-2">
@@ -271,6 +276,12 @@ export function PasoVo2max({
               className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
             />
           </label>
+          <p className="text-xs text-text-secondary">
+            Cómo se hace: test de ida y vuelta de 20 metros (course-navette).
+            Corre siguiendo el ritmo de las señales sonoras, aumentando la
+            velocidad en cada etapa, hasta que ya no puedas mantener el ritmo.
+            Registra la última etapa completada.
+          </p>
 
           {Number(legerEtapa) >= 1 ? (
             <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
@@ -294,6 +305,18 @@ export function PasoVo2max({
         Guardar VO2Max
       </FormSubmitButton>
     </form>
+
+    <form action={omitirVo2maxAction}>
+      <input type="hidden" name="cc" value={cc} />
+      <input type="hidden" name="id" value={macrocicloId} />
+      <button
+        type="submit"
+        className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-center text-sm font-medium text-text-secondary transition hover:bg-bg-subtle dark:border-white/10 dark:bg-bg-subtle"
+      >
+        Omitir este paso
+      </button>
+    </form>
+    </div>
   );
 }
 
@@ -652,6 +675,16 @@ export function PasoSemanas({
   onContinuar: () => void;
 }) {
   const router = useRouter();
+  const [isRefreshPending, startRefreshTransition] = useTransition();
+  const [avanzarAlRefrescar, setAvanzarAlRefrescar] = useState(false);
+
+  useEffect(() => {
+    if (avanzarAlRefrescar && !isRefreshPending) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAvanzarAlRefrescar(false);
+      onContinuar();
+    }
+  }, [avanzarAlRefrescar, isRefreshPending, onContinuar]);
 
   function esAbdominal(nombre: string): boolean {
     return /abdominal/i.test(nombre);
@@ -1137,8 +1170,10 @@ export function PasoSemanas({
         action={async (formData) => {
           const result = await guardarPeriodizacionSinRedirectAction(formData);
           if (result.success) {
-            router.refresh();
-            onContinuar();
+            setAvanzarAlRefrescar(true);
+            startRefreshTransition(() => {
+              router.refresh();
+            });
           } else {
             alert(result.error);
           }
@@ -1290,11 +1325,6 @@ function describirVo2max(
           `Distancia: ${vo2max.distanciaMetros} m`,
           `VO2Max: ${vo2max.valor.toFixed(2)} ml/kg/min`,
         ],
-      };
-    case "directo":
-      return {
-        metodo: "Directo",
-        detalles: [`VO2Max: ${vo2max.valor.toFixed(2)} ml/kg/min`],
       };
     case "leger":
       return {

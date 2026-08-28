@@ -14,6 +14,7 @@ type CasasStep = {
 
 type Props = {
   formatWeight: (value: number) => string;
+  onFinalRMChange?: (finalRM: number) => void;
 };
 
 const CASAS_STEPS: CasasStep[] = [
@@ -123,7 +124,7 @@ function toNumber(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-export function CasasProtocol({ formatWeight }: Props) {
+export function CasasProtocol({ formatWeight, onFinalRMChange }: Props) {
   const [exerciseName, setExerciseName] = useState("");
   const [referenceRM, setReferenceRM] = useState("");
   const [activeStep, setActiveStep] = useState(0);
@@ -152,11 +153,21 @@ export function CasasProtocol({ formatWeight }: Props) {
       })),
     [actualWeights, reference],
   );
-  const finalRM = Math.max(
-    ...calculatedSteps.map((step) => step.actualWeight || step.targetWeightMax),
-    0,
-  );
+  // D-05: el RM final solo puede salir de pesos realmente levantados
+  // (actualWeight). Antes, si no se registraba ningún peso real, se
+  // fabricaba un "RM" a partir del peso teórico sugerido (hasta 115.8% del
+  // RM de referencia): el sistema registraba como medido algo que el
+  // atleta nunca levantó. Sin pesos reales, finalRM queda en 0 y el
+  // protocolo no se puede cerrar (ver NuevaSesionForm.tsx).
+  const pesosReales = calculatedSteps
+    .map((step) => step.actualWeight)
+    .filter((peso) => peso > 0);
+  const finalRM = pesosReales.length > 0 ? Math.max(...pesosReales) : 0;
   const current = calculatedSteps[activeStep];
+
+  useEffect(() => {
+    onFinalRMChange?.(finalRM);
+  }, [finalRM, onFinalRMChange]);
   const timerMinutes = Math.floor(timerSecondsLeft / 60);
   const timerSeconds = String(timerSecondsLeft % 60).padStart(2, "0");
   const timerProgress =
@@ -285,6 +296,14 @@ export function CasasProtocol({ formatWeight }: Props) {
             RM final: {finalRM > 0 ? `${formatWeight(finalRM)} kg` : "pendiente"}
           </p>
         </div>
+
+        {finalRM <= 0 ? (
+          <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200">
+            Registra al menos un peso realmente levantado en &ldquo;Peso
+            usado&rdquo; para poder guardar la sesión. No se puede cerrar el
+            protocolo con valores solo sugeridos.
+          </p>
+        ) : null}
 
         <div className="mt-4 rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-sm dark:border-white/10 dark:bg-bg-main">
           <p className="font-semibold text-text-primary dark:text-white">

@@ -9,7 +9,7 @@ type CardProps = {
 
 export function Card({ title, subtitle, actions, children }: CardProps) {
   return (
-    <section className="rounded-2xl border border-gray-200 bg-bg-soft p-5 dark:border-white/8">
+    <section className="min-w-0 rounded-2xl border border-gray-200 bg-bg-soft p-5 dark:border-white/8">
       {title || subtitle || actions ? (
         <header className="mb-4 flex items-start justify-between gap-3">
           <div>

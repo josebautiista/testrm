@@ -13,7 +13,7 @@ export default async function NuevoMacrocicloPage({
   const cc = typeof rawCC === "string" ? rawCC.trim() : "";
 
   if (!cc) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const persona = await prisma.persona.findUnique({
@@ -22,7 +22,7 @@ export default async function NuevoMacrocicloPage({
   });
 
   if (!persona) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const { macrociclo } = await crearORecuperarBorrador({

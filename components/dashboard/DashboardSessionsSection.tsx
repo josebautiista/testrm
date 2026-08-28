@@ -35,6 +35,7 @@ type DashboardSessionsSectionProps = {
   cc: string;
   saved?: boolean;
   deleted?: boolean;
+  savedSesionId?: number;
 };
 
 const PREVIEW_LIMIT = 5;
@@ -45,6 +46,7 @@ export function DashboardSessionsSection({
   cc,
   saved = false,
   deleted = false,
+  savedSesionId,
 }: DashboardSessionsSectionProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const [showAll, setShowAll] = useState(false);
@@ -85,7 +87,7 @@ export function DashboardSessionsSection({
       <header className="space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+            <h2 className="text-2xl font-bold tracking-tight text-text-primary dark:text-white">
               Mis sesiones
             </h2>
             <p className="text-sm text-text-secondary">
@@ -98,9 +100,17 @@ export function DashboardSessionsSection({
         </div>
 
         {saved ? (
-          <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
-            Sesión guardada correctamente
-          </p>
+          <div className="space-y-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
+            <p>Sesión guardada correctamente</p>
+            {savedSesionId ? (
+              <Link
+                href={`/sesion/${savedSesionId}?cc=${encodeURIComponent(cc)}`}
+                className="block font-bold uppercase tracking-wide underline underline-offset-4"
+              >
+                Dar click aquí para revisar sesión guardada
+              </Link>
+            ) : null}
+          </div>
         ) : deleted ? (
           <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
             Sesión eliminada correctamente

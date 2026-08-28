@@ -45,7 +45,7 @@ export default async function NuevaSesionPage({
   const requestId = randomUUID();
 
   if (!cc) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const persona = await prisma.persona.findUnique({
@@ -58,7 +58,7 @@ export default async function NuevaSesionPage({
   });
 
   if (!persona) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const personaSafe = persona;
@@ -69,6 +69,7 @@ export default async function NuevaSesionPage({
       nombre: true,
       porcentajeMasaHombre: true,
       porcentajeMasaMujer: true,
+      esDeTiempo: true,
     },
     orderBy: {
       id: "asc",

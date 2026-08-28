@@ -146,17 +146,26 @@ export function SearchableSelect({
         aria-expanded={isOpen}
         aria-label={ariaLabel}
         onClick={() => (isOpen ? close() : setIsOpen(true))}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-gray-200 bg-bg-soft px-3 py-2 text-left text-sm text-text-primary outline-none transition-colors focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
+        className="flex w-full items-center justify-between gap-2 rounded-2xl border border-transparent bg-gray-50 px-3.5 py-2.5 text-left text-sm text-gray-900 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.25)] outline-none transition-shadow duration-200 focus:shadow-[inset_0_0_0_1px_rgba(30,41,59,0.35)] dark:border dark:border-white/6 dark:bg-bg-main dark:text-white dark:focus:border-white/15 dark:shadow-none"
       >
         <span className="truncate">
           {selectedOption?.label ?? "Seleccionar..."}
         </span>
-        <span
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
           className={[
-            "h-2 w-2 shrink-0 rotate-45 border-b border-r border-text-tertiary transition-transform",
-            isOpen ? "rotate-[225deg]" : "",
+            "h-4 w-4 shrink-0 text-text-tertiary transition-transform duration-200",
+            isOpen ? "rotate-180" : "",
           ].join(" ")}
-        />
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
 
       {isOpen && position
@@ -170,7 +179,7 @@ export function SearchableSelect({
                 left: position.left,
                 width: position.width,
               }}
-              className="z-50 overflow-hidden rounded-xl border border-gray-200 bg-bg-main shadow-lg dark:border-white/10 dark:bg-bg-subtle"
+              className="z-50 overflow-hidden rounded-2xl border border-gray-200 bg-bg-main shadow-lg dark:border-white/10 dark:bg-bg-subtle"
             >
               <div className="border-b border-gray-200 p-2 dark:border-white/10">
                 <input
@@ -183,7 +192,7 @@ export function SearchableSelect({
                   }}
                   onKeyDown={handleSearchKeyDown}
                   placeholder="Buscar..."
-                  className="w-full rounded-lg border border-gray-200 bg-bg-soft px-2.5 py-1.5 text-sm text-text-primary outline-none focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
+                  className="w-full rounded-xl border border-gray-200 bg-bg-soft px-2.5 py-1.5 text-sm text-text-primary outline-none focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
                 />
               </div>
               <div
@@ -210,7 +219,7 @@ export function SearchableSelect({
                         onMouseEnter={() => setHighlightedIndex(index)}
                         onClick={() => selectOption(option.value)}
                         className={[
-                          "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                          "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors",
                           isHighlighted ? "bg-bg-soft dark:bg-bg-main" : "",
                           isSelected
                             ? "font-semibold text-text-primary dark:text-white"

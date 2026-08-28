@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 
+import { updateNivelOverrideAction } from "@/actions/persona";
 import {
   isUserLevel,
   resolveUserLevel,
   type UserLevel,
 } from "@/lib/user-level";
 
-export const USER_LEVEL_OVERRIDE_KEY = "user_level_override";
 export const USER_LEVEL_OVERRIDE_EVENT = "user-level-override-change";
 
 type UserLevelSelectorProps = {
   autoLevel: UserLevel;
+  initialOverride: UserLevel | null;
+  cc: string;
   onResolvedLevelChange?: (level: UserLevel) => void;
 };
 
@@ -25,25 +27,19 @@ const options: Array<{ value: SelectorValue; label: string }> = [
   { value: "advanced", label: "Avanzado" },
 ];
 
-function readOverrideLevel(): UserLevel | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const storedLevel = window.localStorage.getItem(USER_LEVEL_OVERRIDE_KEY);
-  return isUserLevel(storedLevel) ? storedLevel : null;
-}
-
 export function UserLevelSelector({
   autoLevel,
+  initialOverride,
+  cc,
   onResolvedLevelChange,
 }: UserLevelSelectorProps) {
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [value, setValue] = useState<SelectorValue>(
-    () => readOverrideLevel() ?? "auto",
+    () => initialOverride ?? "auto",
   );
   const [isOpen, setIsOpen] = useState(false);
+  const [, startTransition] = useTransition();
   const selectedOption =
     options.find((option) => option.value === value) ?? options[0];
 
@@ -72,12 +68,6 @@ export function UserLevelSelector({
     setValue(nextValue);
     setIsOpen(false);
 
-    if (overrideLevel) {
-      window.localStorage.setItem(USER_LEVEL_OVERRIDE_KEY, overrideLevel);
-    } else {
-      window.localStorage.removeItem(USER_LEVEL_OVERRIDE_KEY);
-    }
-
     window.dispatchEvent(
       new CustomEvent(USER_LEVEL_OVERRIDE_EVENT, {
         detail: { level: overrideLevel },
@@ -85,11 +75,15 @@ export function UserLevelSelector({
     );
 
     onResolvedLevelChange?.(resolveUserLevel(autoLevel, overrideLevel));
+
+    startTransition(() => {
+      updateNivelOverrideAction(cc, overrideLevel).catch(() => {});
+    });
   }
 
   return (
     <div ref={rootRef} className="relative space-y-1">
-      <span id={`${listboxId}-label`} className="block text-xs font-medium uppercase tracking-wide text-text-tertiary">
+      <span id={`${listboxId}-label`} className="block text-sm font-semibold uppercase tracking-wide text-text-primary dark:text-white">
         Ajustar nivel
       </span>
       <button
@@ -98,7 +92,7 @@ export function UserLevelSelector({
         aria-expanded={isOpen}
         aria-labelledby={`${listboxId}-label ${listboxId}-value`}
         onClick={() => setIsOpen((open) => !open)}
-        className="flex h-11 w-full items-center justify-between rounded-2xl border border-gray-200 bg-bg-main px-4 text-left text-sm font-medium text-text-primary shadow-sm outline-none transition-colors hover:border-accent/60 focus:border-accent dark:border-white/10 dark:bg-bg-soft dark:text-white"
+        className="flex h-12 w-full items-center justify-between rounded-2xl border-2 border-accent/40 bg-bg-main px-4 text-left text-base font-semibold text-text-primary shadow-sm outline-none transition-colors hover:border-accent focus:border-accent dark:bg-bg-soft dark:text-white"
       >
         <span id={`${listboxId}-value`}>{selectedOption.label}</span>
         <span

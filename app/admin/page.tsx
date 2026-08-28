@@ -49,7 +49,7 @@ export default async function AdminPage() {
         <StatCard label="Total resultados" value={totalResultados} />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         <Card
           title="Ultimas personas"
           actions={

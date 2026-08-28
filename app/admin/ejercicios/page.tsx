@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Card } from "@/components/admin/Card";
 import { Pagination } from "@/components/admin/Pagination";
 import { Table } from "@/components/admin/Table";
@@ -31,14 +33,31 @@ export default async function AdminEjerciciosPage({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <Card title="Ejercicios" subtitle={`Total: ${total}`}>
+    <Card
+      title="Ejercicios"
+      subtitle={`Total: ${total}`}
+      actions={
+        <Link
+          href="/admin/ejercicios/nuevo"
+          className="rounded-xl border border-transparent bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+        >
+          Nuevo ejercicio
+        </Link>
+      }
+    >
       <Table
         headers={[
           "ID",
           "Nombre",
-          "% Masa Hombre",
-          "% Masa Mujer",
+          "Patrón",
+          "Equipamiento",
+          "Incremento (kg)",
+          "% Masa H",
+          "% Masa M",
+          "Es de tiempo",
+          "Activo",
           "Resultados",
+          "",
         ]}
         hasRows={ejercicios.length > 0}
       >
@@ -48,6 +67,13 @@ export default async function AdminEjerciciosPage({
             <td className="px-4 py-3 text-text-primary dark:text-white">
               {ejercicio.nombre}
             </td>
+            <td className="px-4 py-3 text-text-secondary">{ejercicio.patron}</td>
+            <td className="px-4 py-3 text-text-secondary">
+              {ejercicio.equipamiento}
+            </td>
+            <td className="px-4 py-3 text-text-secondary">
+              {ejercicio.incrementoMinimoKg}
+            </td>
             <td className="px-4 py-3 text-text-secondary">
               {ejercicio.porcentajeMasaHombre}
             </td>
@@ -55,7 +81,21 @@ export default async function AdminEjerciciosPage({
               {ejercicio.porcentajeMasaMujer}
             </td>
             <td className="px-4 py-3 text-text-secondary">
+              {ejercicio.esDeTiempo ? "Sí" : "No"}
+            </td>
+            <td className="px-4 py-3 text-text-secondary">
+              {ejercicio.activo ? "Sí" : "No"}
+            </td>
+            <td className="px-4 py-3 text-text-secondary">
               {ejercicio.resultados.length}
+            </td>
+            <td className="px-4 py-3 text-right">
+              <Link
+                href={`/admin/ejercicios/${ejercicio.id}`}
+                className="text-sm text-accent underline-offset-4 hover:underline"
+              >
+                Editar
+              </Link>
             </td>
           </tr>
         ))}

@@ -7,6 +7,7 @@ import { calculateInitialWeight, calculateKIES, generateSeries } from "@/lib/nac
 type Props = {
   bodyWeight: number;
   formatWeight: (value: number) => string;
+  onFinalRMChange?: (finalRM: number) => void;
 };
 
 type NacleiroGroup = {
@@ -23,7 +24,7 @@ function toNumber(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-export function NacleiroTable({ bodyWeight, formatWeight }: Props) {
+export function NacleiroTable({ bodyWeight, formatWeight, onFinalRMChange }: Props) {
   const [exerciseName, setExerciseName] = useState("");
   const [estimatedRM, setEstimatedRM] = useState("");
   const [activeGroup, setActiveGroup] = useState(0);
@@ -109,10 +110,18 @@ export function NacleiroTable({ bodyWeight, formatWeight }: Props) {
     group: index + 1,
     actualReps: toNumber(actualReps[index] ?? ""),
   }));
+  // Mismo criterio que Casas (D-05): el RM detectado solo puede salir de
+  // grupos donde el atleta realmente reportó repeticiones, nunca del peso
+  // objetivo teórico (antes: `finalRM || rm` caía de vuelta al RM estimado
+  // a mano si no se registraba ningún grupo real).
   const finalRM = series.reduce((max, serie) => {
     return serie.actualReps > 0 ? Math.max(max, serie.targetWeight) : max;
   }, 0);
   const current = series[activeGroup];
+
+  useEffect(() => {
+    onFinalRMChange?.(finalRM);
+  }, [finalRM, onFinalRMChange]);
   const timerMinutes = Math.floor(timerSecondsLeft / 60);
   const timerSeconds = String(timerSecondsLeft % 60).padStart(2, "0");
   const timerProgress =
@@ -139,7 +148,7 @@ export function NacleiroTable({ bodyWeight, formatWeight }: Props) {
     <div className="space-y-4">
       <input type="hidden" name="protocolData" value={JSON.stringify(protocolData)} />
       <input type="hidden" name="estimatedRM" value={rm} />
-      <input type="hidden" name="finalRM" value={finalRM || rm} />
+      <input type="hidden" name="finalRM" value={finalRM} />
       <input type="hidden" name="protocolExerciseName" value={exerciseName} />
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -241,6 +250,14 @@ export function NacleiroTable({ bodyWeight, formatWeight }: Props) {
               RM detectado: {finalRM ? `${formatWeight(finalRM)} kg` : "pendiente"}
             </p>
           </div>
+
+          {finalRM <= 0 ? (
+            <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200">
+              Registra las repeticiones reales de al menos un grupo para poder
+              guardar la sesión. No se puede cerrar el test con el RM estimado
+              a mano.
+            </p>
+          ) : null}
 
           <div className="mt-4 rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-sm dark:border-white/10 dark:bg-bg-main">
             <p className="font-semibold text-text-primary dark:text-white">

@@ -44,6 +44,7 @@ Este repositorio es una aplicación web construida con **Next.js 16 (App Router)
 - Evita suponer que la aplicación usa el router basado en `pages/`.
 - Cuando trabajes con persistencia, inspecciona `prisma/schema.prisma` y `services/`.
 - Para cambios en la lógica de autenticación o datos, revisa `lib/auth.ts`, `actions/`, y `app/api/`.
+- Antes de tocar `lib/rm/**`, `lib/planificacion/**`, `lib/progresion/**` o `lib/config/parametros.ts`, lee `docs/DECISIONES.md` (por qué cada regla/constante es como es) y `docs/PLAN-MAESTRO.md` (plan maestro y orden de tareas de la reescritura en curso).
 
 ## Sistema de colores y estilos (Tailwind CSS 4)
 

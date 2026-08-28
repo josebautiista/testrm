@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createPersonaAction, type RegistroState } from "@/actions/persona";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
+import { Select } from "@/components/ui/Select";
 
 const initialState: RegistroState = {
   error: null,
@@ -71,19 +72,16 @@ export default function RegistroPage({
             </Section>
 
             <Section title="Sexo" className="space-y-2">
-              <select
-                id="sexo"
+              <Select
                 name="sexo"
-                className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-base text-text-primary outline-none focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
-                required
                 defaultValue=""
-              >
-                <option value="" disabled>
-                  Selecciona una opcion
-                </option>
-                <option value="masculino">Masculino</option>
-                <option value="femenino">Femenino</option>
-              </select>
+                ariaLabel="Sexo"
+                placeholder="Selecciona una opción"
+                options={[
+                  { value: "masculino", label: "Masculino" },
+                  { value: "femenino", label: "Femenino" },
+                ]}
+              />
             </Section>
 
             <Section

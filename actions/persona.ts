@@ -1,11 +1,17 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@prisma/client";
+import { revalidatePath } from "next/cache";
 
+import { prisma } from "@/lib/prisma";
 import { createPersona as createPersonaService } from "@/services/persona.service";
-import { updateMedidasBasicas } from "@/services/persona.service";
+import {
+  updateMedidasBasicas,
+  updateNivelOverride,
+  updateDisponibilidad,
+  type DisponibilidadInput,
+} from "@/services/persona.service";
+import { isUserLevel } from "@/lib/user-level";
 
 export type EntryState = {
   error: string | null;
@@ -34,24 +40,6 @@ type CreatePersonaInput = {
   talla: number;
   entrenado: boolean;
 };
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-function createPrismaClient() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not configured");
-  }
-
-  const adapter = new PrismaMariaDb(databaseUrl);
-  return new PrismaClient({ adapter });
-}
-
-const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
 
 function normalizeCC(value: string) {
   return value.trim();
@@ -263,6 +251,68 @@ export async function actualizarMedidasBasicasAction(
       success: false,
       masaCorporal: null,
       talla: null,
+    };
+  }
+}
+
+export async function updateNivelOverrideAction(cc: string, nivel: string | null) {
+  const normalizedCC = normalizeCC(cc);
+
+  if (!normalizedCC) {
+    throw new Error("El CC es obligatorio.");
+  }
+
+  const parsedNivel = nivel !== null && isUserLevel(nivel) ? nivel : null;
+
+  await updateNivelOverride(normalizedCC, parsedNivel);
+
+  revalidatePath("/dashboard");
+  revalidatePath("/sesion/[id]", "page");
+}
+
+// TASK-051/D-14: avanzarAFuerzaAction y updateFaseEntrenamientoAction se
+// retiraron — eran un sistema de progresión paralelo e independiente del
+// mesociclo activo (avance automático a los 60 días, o botones manuales sin
+// relación con el plan real del atleta). Ver docs/DECISIONES.md.
+
+export type DisponibilidadState = {
+  error: string | null;
+  success: boolean;
+};
+
+/** TASK-025 · C-12: disponibilidad y contexto del atleta, insumo del motor de planificación (M5). */
+export async function actualizarDisponibilidadAction(
+  _prevState: DisponibilidadState,
+  formData: FormData,
+): Promise<DisponibilidadState> {
+  const cc = normalizeCC(getString(formData.get("cc")));
+
+  if (!cc) {
+    return { error: "Debes enviar el CC de la persona.", success: false };
+  }
+
+  const equipamientoRaw = getString(formData.get("equipamiento"));
+  const input: DisponibilidadInput = {
+    mesesEntrenamiento: Math.trunc(toFiniteNumber(formData.get("mesesEntrenamiento"))),
+    diasDisponibles: Math.trunc(toFiniteNumber(formData.get("diasDisponibles"))),
+    minutosPorSesion: Math.trunc(toFiniteNumber(formData.get("minutosPorSesion"))),
+    equipamiento: equipamientoRaw
+      ? equipamientoRaw.split(",").map((v) => v.trim()).filter(Boolean)
+      : [],
+    limitaciones: getString(formData.get("limitaciones")) || null,
+  };
+
+  try {
+    await updateDisponibilidad(cc, input);
+    revalidatePath("/dashboard");
+    return { error: null, success: true };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "No fue posible actualizar la disponibilidad. Intenta nuevamente.",
+      success: false,
     };
   }
 }

@@ -22,7 +22,7 @@ export default async function CargaMesocicloPage({
   const cc = typeof rawCC === "string" ? rawCC.trim() : "";
 
   if (!cc || !Number.isInteger(macrocicloId) || macrocicloId <= 0 || !Number.isInteger(mesocicloId) || mesocicloId <= 0) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const persona = await prisma.persona.findUnique({
@@ -31,7 +31,7 @@ export default async function CargaMesocicloPage({
   });
 
   if (!persona) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const macrociclo = await prisma.macrociclo.findUnique({

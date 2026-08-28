@@ -323,7 +323,7 @@ export async function guardarRmSnapshot({
     data: {
       sesionRmId,
       rmSnapshot: rmSnapshot as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 4),
+      pasoActual: Math.max(pasoActual, 3),
     },
   });
 
@@ -355,7 +355,7 @@ export async function guardarVo2maxSnapshot({
     where: { id, personaId },
     data: {
       vo2maxSnapshot: vo2max as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 5),
+      pasoActual: Math.max(pasoActual, 4),
     },
   });
 
@@ -405,150 +405,305 @@ export async function guardarPeriodizacion({
     mesociclos,
   });
 
+  // F-08/D-10: calcularPeriodizacion nunca lanza; si la distribución de
+  // semanas no es posible (menos semanas que bloques activos), lo reporta
+  // aquí como un error explícito antes de tocar la base de datos (E-06).
+  if (calculado.errores.length > 0) {
+    throw new Error(calculado.errores.join(" "));
+  }
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  // D-08: guardado no destructivo. En vez de deleteMany + recrear todo (lo
+  // que arrastraba en cascada MesocicloCarga y MacrocicloSemanaEjercicio),
+  // se diferencia contra lo existente por `orden` (periodos, mesociclos) y
+  // por `numeroSemana` (semanas), actualizando en el sitio, insertando lo
+  // nuevo y borrando solo lo que ya no tiene lugar. Las semanas cuya
+  // fechaFin ya pasó, y los mesociclos que las contienen, nunca se tocan.
   await prisma.$transaction(
     async (tx) => {
-      await tx.macrocicloPeriodo.deleteMany({ where: { macrocicloId: id } });
-      await tx.macrocicloMesociclo.deleteMany({ where: { macrocicloId: id } });
-      await tx.macrocicloSemana.deleteMany({ where: { macrocicloId: id } });
-
-      if (calculado.periodos.length > 0) {
-        await tx.macrocicloPeriodo.createMany({
-          data: calculado.periodos.map((periodo) => ({
-            macrocicloId: id,
-            tipo: periodo.tipo,
-            porcentaje: periodo.porcentaje,
-            fechaInicio: periodo.fechaInicio,
-            fechaFin: periodo.fechaFin,
-            orden: periodo.orden,
-          })),
-        });
-
-        const periodosCreados = await tx.macrocicloPeriodo.findMany({
-          where: { macrocicloId: id },
-          select: { id: true, tipo: true },
-        });
-        const periodoIdPorTipo = new Map(
-          periodosCreados.map((p) => [p.tipo, p.id]),
-        );
-
-        const etapasData = calculado.periodos.flatMap((periodo) => {
-          const periodoId = periodoIdPorTipo.get(periodo.tipo);
-          if (!periodoId) return [];
-          return periodo.etapas.map((etapa) => ({
-            periodoId,
-            tipo: etapa.tipo,
-            porcentaje: etapa.porcentaje,
-            fechaInicio: etapa.fechaInicio,
-            fechaFin: etapa.fechaFin,
-            orden: etapa.orden,
-          }));
-        });
-
-        if (etapasData.length > 0) {
-          await tx.macrocicloEtapa.createMany({ data: etapasData });
-        }
-      }
-
-      const mesocicloIdPorTipo = new Map<string, number>();
-      if (calculado.mesociclos.length > 0) {
-        await tx.macrocicloMesociclo.createMany({
-          data: calculado.mesociclos.map((mesociclo) => ({
-            macrocicloId: id,
-            tipo: mesociclo.tipo,
-            porcentaje: mesociclo.porcentaje,
-            fechaInicio: mesociclo.fechaInicio,
-            fechaFin: mesociclo.fechaFin,
-            orden: mesociclo.orden,
-          })),
-        });
-
-        const mesociclosCreados = await tx.macrocicloMesociclo.findMany({
-          where: { macrocicloId: id },
-          select: { id: true, tipo: true },
-        });
-        for (const m of mesociclosCreados) {
-          mesocicloIdPorTipo.set(m.tipo, m.id);
-        }
-      }
-
-      const semanasMap = new Map(semanas.map((s) => [s.numeroSemana, s]));
-
-      const semanasData = calculado.semanas.flatMap((semanaCalculada) => {
-        const mesocicloId = [...mesocicloIdPorTipo.entries()].find(
-          ([tipo]) => {
-            const mesociclo = calculado.mesociclos.find(
-              (m) => m.tipo === tipo,
-            );
-            if (!mesociclo) return false;
-            return (
-              semanaCalculada.fechaInicio >= mesociclo.fechaInicio &&
-              semanaCalculada.fechaInicio <= mesociclo.fechaFin
-            );
-          },
-        )?.[1];
-
-        if (!mesocicloId) return [];
-
-        const semanaInput = semanasMap.get(semanaCalculada.numeroSemana);
-
-        return [
-          {
-            macrocicloId: id,
-            mesocicloId,
-            numeroSemana: semanaCalculada.numeroSemana,
-            mesCalendario: semanaCalculada.mesCalendario,
-            fechaInicio: semanaCalculada.fechaInicio,
-            fechaFin: semanaCalculada.fechaFin,
-            tipoMicrociclo: semanaInput?.tipoMicrociclo ?? "corriente",
-            frecuencia: semanaInput?.frecuencia ?? 0,
-            series: semanaInput?.series ?? 0,
-            repeticiones: semanaInput?.repeticiones ?? 0,
-            volumen: semanaInput?.volumen ?? 0,
-            intensidad: semanaInput?.intensidad ?? 0,
-            notas: semanaInput?.notas,
-          },
-        ];
+      // ---------- Periodos (diff por orden) ----------
+      const periodosExistentes = await tx.macrocicloPeriodo.findMany({
+        where: { macrocicloId: id },
+        select: { id: true, orden: true },
       });
+      const periodoIdPorOrden = new Map(
+        periodosExistentes.map((p) => [p.orden, p.id]),
+      );
 
-      if (semanasData.length > 0) {
-        await tx.macrocicloSemana.createMany({ data: semanasData });
+      for (const periodo of calculado.periodos) {
+        const existenteId = periodoIdPorOrden.get(periodo.orden);
+        if (existenteId) {
+          await tx.macrocicloPeriodo.update({
+            where: { id: existenteId },
+            data: {
+              tipo: periodo.tipo,
+              porcentaje: periodo.porcentaje,
+              fechaInicio: periodo.fechaInicio,
+              fechaFin: periodo.fechaFin,
+            },
+          });
+        } else {
+          const creado = await tx.macrocicloPeriodo.create({
+            data: {
+              macrocicloId: id,
+              tipo: periodo.tipo,
+              porcentaje: periodo.porcentaje,
+              fechaInicio: periodo.fechaInicio,
+              fechaFin: periodo.fechaFin,
+              orden: periodo.orden,
+            },
+          });
+          periodoIdPorOrden.set(periodo.orden, creado.id);
+        }
+      }
 
-        const semanasCreadas = await tx.macrocicloSemana.findMany({
-          where: { macrocicloId: id },
-          select: { id: true, numeroSemana: true },
+      const ordenesPeriodosNuevos = new Set(
+        calculado.periodos.map((p) => p.orden),
+      );
+      const periodosABorrar = periodosExistentes.filter(
+        (p) => !ordenesPeriodosNuevos.has(p.orden),
+      );
+      if (periodosABorrar.length > 0) {
+        await tx.macrocicloPeriodo.deleteMany({
+          where: { id: { in: periodosABorrar.map((p) => p.id) } },
         });
-        const semanaIdPorNumero = new Map(
-          semanasCreadas.map((s) => [s.numeroSemana, s.id]),
+      }
+
+      // ---------- Etapas por periodo (diff por orden) ----------
+      for (const periodo of calculado.periodos) {
+        const periodoId = periodoIdPorOrden.get(periodo.orden);
+        if (!periodoId) continue;
+
+        const etapasExistentes = await tx.macrocicloEtapa.findMany({
+          where: { periodoId },
+          select: { id: true, orden: true },
+        });
+        const etapaIdPorOrden = new Map(
+          etapasExistentes.map((e) => [e.orden, e.id]),
         );
 
-        const ejerciciosData = calculado.semanas.flatMap(
-          (semanaCalculada) => {
-            const semanaInput = semanasMap.get(semanaCalculada.numeroSemana);
-            const semanaId = semanaIdPorNumero.get(
-              semanaCalculada.numeroSemana,
-            );
-            if (!semanaId || !semanaInput?.ejercicios?.length) return [];
-            return semanaInput.ejercicios.map((e) => ({
+        for (const etapa of periodo.etapas) {
+          const existenteId = etapaIdPorOrden.get(etapa.orden);
+          if (existenteId) {
+            await tx.macrocicloEtapa.update({
+              where: { id: existenteId },
+              data: {
+                tipo: etapa.tipo,
+                porcentaje: etapa.porcentaje,
+                fechaInicio: etapa.fechaInicio,
+                fechaFin: etapa.fechaFin,
+              },
+            });
+          } else {
+            await tx.macrocicloEtapa.create({
+              data: {
+                periodoId,
+                tipo: etapa.tipo,
+                porcentaje: etapa.porcentaje,
+                fechaInicio: etapa.fechaInicio,
+                fechaFin: etapa.fechaFin,
+                orden: etapa.orden,
+              },
+            });
+          }
+        }
+
+        const ordenesEtapasNuevas = new Set(periodo.etapas.map((e) => e.orden));
+        const etapasABorrar = etapasExistentes.filter(
+          (e) => !ordenesEtapasNuevas.has(e.orden),
+        );
+        if (etapasABorrar.length > 0) {
+          await tx.macrocicloEtapa.deleteMany({
+            where: { id: { in: etapasABorrar.map((e) => e.id) } },
+          });
+        }
+      }
+
+      // ---------- Mesociclos (diff por orden — corrige D-09) ----------
+      const mesociclosExistentes = await tx.macrocicloMesociclo.findMany({
+        where: { macrocicloId: id },
+        select: { id: true, orden: true },
+      });
+      const mesocicloIdPorOrden = new Map(
+        mesociclosExistentes.map((m) => [m.orden, m.id]),
+      );
+
+      for (const mesociclo of calculado.mesociclos) {
+        const existenteId = mesocicloIdPorOrden.get(mesociclo.orden);
+        if (existenteId) {
+          await tx.macrocicloMesociclo.update({
+            where: { id: existenteId },
+            data: {
+              tipo: mesociclo.tipo,
+              porcentaje: mesociclo.porcentaje,
+              fechaInicio: mesociclo.fechaInicio,
+              fechaFin: mesociclo.fechaFin,
+            },
+          });
+        } else {
+          const creado = await tx.macrocicloMesociclo.create({
+            data: {
+              macrocicloId: id,
+              tipo: mesociclo.tipo,
+              porcentaje: mesociclo.porcentaje,
+              fechaInicio: mesociclo.fechaInicio,
+              fechaFin: mesociclo.fechaFin,
+              orden: mesociclo.orden,
+            },
+          });
+          mesocicloIdPorOrden.set(mesociclo.orden, creado.id);
+        }
+      }
+
+      // Un mesociclo que ya no aparece en el nuevo cálculo solo se borra si
+      // ninguna de sus semanas ya pasó (protege MesocicloCarga histórico).
+      const ordenesMesociclosNuevos = new Set(
+        calculado.mesociclos.map((m) => m.orden),
+      );
+      const mesociclosCandidatosABorrar = mesociclosExistentes.filter(
+        (m) => !ordenesMesociclosNuevos.has(m.orden),
+      );
+
+      let mesociclosABorrar = mesociclosCandidatosABorrar;
+      if (mesociclosCandidatosABorrar.length > 0) {
+        const semanasHistoricas = await tx.macrocicloSemana.findMany({
+          where: {
+            mesocicloId: { in: mesociclosCandidatosABorrar.map((m) => m.id) },
+            fechaFin: { lt: hoy },
+          },
+          select: { mesocicloId: true },
+        });
+        const mesociclosConHistorial = new Set(
+          semanasHistoricas.map((s) => s.mesocicloId),
+        );
+        mesociclosABorrar = mesociclosCandidatosABorrar.filter(
+          (m) => !mesociclosConHistorial.has(m.id),
+        );
+      }
+      if (mesociclosABorrar.length > 0) {
+        await tx.macrocicloMesociclo.deleteMany({
+          where: { id: { in: mesociclosABorrar.map((m) => m.id) } },
+        });
+      }
+
+      // ---------- Semanas + ejercicios (diff por numeroSemana) ----------
+      const semanasExistentes = await tx.macrocicloSemana.findMany({
+        where: { macrocicloId: id },
+        select: { id: true, numeroSemana: true, fechaFin: true },
+      });
+      const semanaExistentePorNumero = new Map(
+        semanasExistentes.map((s) => [s.numeroSemana, s]),
+      );
+      const semanasInputMap = new Map(semanas.map((s) => [s.numeroSemana, s]));
+
+      for (const semanaCalculada of calculado.semanas) {
+        const existente = semanaExistentePorNumero.get(
+          semanaCalculada.numeroSemana,
+        );
+
+        // Regla de no-destrucción (§4.3.5): una semana ya pasada nunca se
+        // toca, sin importar qué cambió en la configuración.
+        if (existente && existente.fechaFin < hoy) {
+          continue;
+        }
+
+        const mesociclo = calculado.mesociclos.find(
+          (m) =>
+            semanaCalculada.fechaInicio >= m.fechaInicio &&
+            semanaCalculada.fechaInicio <= m.fechaFin,
+        );
+        const mesocicloId = mesociclo
+          ? mesocicloIdPorOrden.get(mesociclo.orden)
+          : undefined;
+        if (!mesocicloId) {
+          // No debería ocurrir si los invariantes de fecha se cumplen; se
+          // omite en vez de fallar la transacción completa.
+          continue;
+        }
+
+        const semanaInput = semanasInputMap.get(semanaCalculada.numeroSemana);
+        const data = {
+          macrocicloId: id,
+          mesocicloId,
+          numeroSemana: semanaCalculada.numeroSemana,
+          mesCalendario: semanaCalculada.mesCalendario,
+          fechaInicio: semanaCalculada.fechaInicio,
+          fechaFin: semanaCalculada.fechaFin,
+          tipoMicrociclo: semanaInput?.tipoMicrociclo ?? "corriente",
+          frecuencia: semanaInput?.frecuencia ?? 0,
+          series: semanaInput?.series ?? 0,
+          repeticiones: semanaInput?.repeticiones ?? 0,
+          volumen: semanaInput?.volumen ?? 0,
+          intensidad: semanaInput?.intensidad ?? 0,
+          notas: semanaInput?.notas,
+        };
+
+        let semanaId: number;
+        if (existente) {
+          await tx.macrocicloSemana.update({ where: { id: existente.id }, data });
+          semanaId = existente.id;
+        } else {
+          const creada = await tx.macrocicloSemana.create({ data });
+          semanaId = creada.id;
+        }
+
+        const ejerciciosInput = semanaInput?.ejercicios ?? [];
+        const ejercicioIdsNuevos = ejerciciosInput.map((e) => e.ejercicioId);
+
+        for (const e of ejerciciosInput) {
+          await tx.macrocicloSemanaEjercicio.upsert({
+            where: {
+              macrocicloSemanaId_ejercicioId: {
+                macrocicloSemanaId: semanaId,
+                ejercicioId: e.ejercicioId,
+              },
+            },
+            create: {
               macrocicloSemanaId: semanaId,
               ejercicioId: e.ejercicioId,
               formulaRm: e.formulaRm,
               rm: e.rm,
               peso: e.peso,
               volumen: e.volumen,
-            }));
-          },
-        );
+            },
+            update: {
+              formulaRm: e.formulaRm,
+              rm: e.rm,
+              peso: e.peso,
+              volumen: e.volumen,
+            },
+          });
+        }
 
-        if (ejerciciosData.length > 0) {
-          await tx.macrocicloSemanaEjercicio.createMany({
-            data: ejerciciosData,
+        if (existente) {
+          await tx.macrocicloSemanaEjercicio.deleteMany({
+            where: {
+              macrocicloSemanaId: semanaId,
+              ejercicioId: { notIn: ejercicioIdsNuevos },
+            },
           });
         }
       }
 
+      // Semanas a borrar: solo futuras (las pasadas están protegidas) y que
+      // ya no aparecen en el nuevo cálculo.
+      const numerosSemanaNuevos = new Set(
+        calculado.semanas.map((s) => s.numeroSemana),
+      );
+      const semanasABorrar = semanasExistentes.filter(
+        (s) => !numerosSemanaNuevos.has(s.numeroSemana) && s.fechaFin >= hoy,
+      );
+      if (semanasABorrar.length > 0) {
+        await tx.macrocicloSemana.deleteMany({
+          where: { id: { in: semanasABorrar.map((s) => s.id) } },
+        });
+      }
+
       await tx.macrociclo.update({
         where: { id },
-        data: { pasoActual: Math.max(pasoActual, 9) },
+        data: { pasoActual: Math.max(pasoActual, 8) },
       });
 
       await tx.macrocicloAuditLog.create({

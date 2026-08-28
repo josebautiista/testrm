@@ -23,7 +23,7 @@ export type TipoMicrociclo =
   | "choque"
   | "recuperacion"
   | "aproximacion";
-export type MetodoVo2max = "leger" | "cooper" | "directo";
+export type MetodoVo2max = "leger" | "cooper";
 export type UserType = "persona" | "admin";
 
 export const OBJETIVOS: { value: ObjetivoTipo; label: string }[] = [
@@ -162,10 +162,6 @@ export type Vo2maxSnapshot =
       valor: number;
     }
   | {
-      metodo: "directo";
-      valor: number;
-    }
-  | {
       metodo: "leger";
       etapa: number;
       velocidadKmh: number;
@@ -271,7 +267,7 @@ export function isTipoMicrociclo(value: string): value is TipoMicrociclo {
 }
 
 export function isMetodoVo2max(value: string): value is MetodoVo2max {
-  return ["leger", "cooper", "directo"].includes(value);
+  return ["leger", "cooper"].includes(value);
 }
 
 // Test de Léger (course-navette 20 m): la etapa 1 inicia en 8.5 km/h

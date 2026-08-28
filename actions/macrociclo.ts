@@ -79,10 +79,10 @@ function redirectToWizard(
 
 export async function iniciarMacrocicloAction(formData: FormData) {
   const cc = getString(formData, "cc");
-  if (!cc) redirect("/");
+  if (!cc) redirect("/atletas");
 
   const persona = await getPersona(cc);
-  if (!persona) redirect("/");
+  if (!persona) redirect("/atletas");
 
   const { macrociclo } = await crearORecuperarBorrador({
     personaId: persona.id,
@@ -103,11 +103,11 @@ export async function guardarPasoObjetivoFechasAction(formData: FormData) {
   const fechaCompetenciaRaw = getString(formData, "fechaCompetencia");
 
   if (!cc || !id || !isObjetivoTipo(objetivoTipo)) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const persona = await getPersona(cc);
-  if (!persona) redirect("/");
+  if (!persona) redirect("/atletas");
 
   const fechaInicio = parseDateInput(fechaInicioRaw);
   const fechaFin = parseDateInput(fechaFinRaw);
@@ -122,7 +122,7 @@ export async function guardarPasoObjetivoFechasAction(formData: FormData) {
   const macrociclo = await prisma.macrociclo.findUnique({
     where: { id, personaId: persona.id },
   });
-  if (!macrociclo) redirect("/");
+  if (!macrociclo) redirect("/atletas");
 
   await guardarPasoObjetivoFechas({
     id,
@@ -145,10 +145,10 @@ export async function guardarMedidasAction(formData: FormData) {
   const medidasRaw = getString(formData, "medidas");
   const actualizarPersona = getBoolean(formData, "actualizarPersona");
 
-  if (!cc || !id || !medidasRaw) redirect("/");
+  if (!cc || !id || !medidasRaw) redirect("/atletas");
 
   const persona = await getPersona(cc);
-  if (!persona) redirect("/");
+  if (!persona) redirect("/atletas");
 
   let medidas: MedidasSnapshot | null = null;
   try {
@@ -162,7 +162,7 @@ export async function guardarMedidasAction(formData: FormData) {
   const macrociclo = await prisma.macrociclo.findUnique({
     where: { id, personaId: persona.id },
   });
-  if (!macrociclo) redirect("/");
+  if (!macrociclo) redirect("/atletas");
 
   await guardarMedidasSnapshot({
     id,
@@ -181,10 +181,10 @@ export async function guardarRmAction(formData: FormData) {
   const id = getInt(formData, "id");
   const sesionRmId = getInt(formData, "sesionRmId");
 
-  if (!cc || !id || !sesionRmId) redirect("/");
+  if (!cc || !id || !sesionRmId) redirect("/atletas");
 
   const persona = await getPersona(cc);
-  if (!persona) redirect("/");
+  if (!persona) redirect("/atletas");
 
   const sesion = await prisma.sesion.findFirst({
     where: { id: sesionRmId, personaId: persona.id },
@@ -197,7 +197,7 @@ export async function guardarRmAction(formData: FormData) {
     },
   });
 
-  if (!sesion) redirectToWizard(cc, id, 3);
+  if (!sesion) redirectToWizard(cc, id, 2);
 
   const rmSnapshot = {
     sesionId: sesion.id,
@@ -227,7 +227,7 @@ export async function guardarRmAction(formData: FormData) {
   const macrociclo = await prisma.macrociclo.findUnique({
     where: { id, personaId: persona.id },
   });
-  if (!macrociclo) redirect("/");
+  if (!macrociclo) redirect("/atletas");
 
   await guardarRmSnapshot({
     id,
@@ -238,7 +238,7 @@ export async function guardarRmAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 4);
+  redirectToWizard(cc, id, 3);
 }
 
 export async function guardarVo2maxAction(formData: FormData) {
@@ -246,27 +246,23 @@ export async function guardarVo2maxAction(formData: FormData) {
   const id = getInt(formData, "id");
   const metodo = getString(formData, "metodo");
 
-  if (!cc || !id || !isMetodoVo2max(metodo)) redirect("/");
+  if (!cc || !id || !isMetodoVo2max(metodo)) redirect("/atletas");
 
   const persona = await getPersona(cc);
-  if (!persona) redirect("/");
+  if (!persona) redirect("/atletas");
 
   let vo2max: Vo2maxSnapshot;
 
   if (metodo === "cooper") {
     const distancia = getNumber(formData, "distanciaMetros");
-    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 4);
+    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 3);
     const valor = (distancia - 504.9) / 44.73;
     vo2max = { metodo, distanciaMetros: distancia, valor };
-  } else if (metodo === "directo") {
-    const valor = getNumber(formData, "valor");
-    if (!valor || valor <= 0) redirectToWizard(cc, id, 4);
-    vo2max = { metodo, valor };
   } else {
     const etapa = getNumber(formData, "etapa");
 
     if (!etapa || etapa < 1 || !Number.isInteger(etapa)) {
-      redirectToWizard(cc, id, 4);
+      redirectToWizard(cc, id, 3);
     }
 
     const etapaFinal = etapa as number;
@@ -281,7 +277,7 @@ export async function guardarVo2maxAction(formData: FormData) {
   const macrociclo = await prisma.macrociclo.findUnique({
     where: { id, personaId: persona.id },
   });
-  if (!macrociclo) redirect("/");
+  if (!macrociclo) redirect("/atletas");
 
   await guardarVo2maxSnapshot({
     id,
@@ -291,7 +287,24 @@ export async function guardarVo2maxAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 5);
+  redirectToWizard(cc, id, 4);
+}
+
+export async function omitirVo2maxAction(formData: FormData) {
+  const cc = getString(formData, "cc");
+  const id = getInt(formData, "id");
+
+  if (!cc || !id) redirect("/atletas");
+
+  const persona = await getPersona(cc);
+  if (!persona) redirect("/atletas");
+
+  const macrociclo = await prisma.macrociclo.findUnique({
+    where: { id, personaId: persona.id },
+  });
+  if (!macrociclo) redirect("/atletas");
+
+  redirectToWizard(cc, id, 4);
 }
 
 type PeriodizacionPayload = {
@@ -405,13 +418,13 @@ export async function guardarPeriodizacionAction(formData: FormData) {
   if ("error" in result) {
     const cc = getString(formData, "cc");
     const id = getInt(formData, "id");
-    if (!cc || !id) redirect("/");
+    if (!cc || !id) redirect("/atletas");
     redirect(
-      `/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}&paso=10&error=${encodeURIComponent(result.error)}`,
+      `/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}&paso=9&error=${encodeURIComponent(result.error)}`,
     );
   }
 
-  redirectToWizard(result.cc, result.id, 9);
+  redirectToWizard(result.cc, result.id, 8);
 }
 
 export async function guardarPeriodizacionSinRedirectAction(
@@ -430,10 +443,10 @@ export async function activarMacrocicloAction(formData: FormData) {
   const cc = getString(formData, "cc");
   const id = getInt(formData, "id");
 
-  if (!cc || !id) redirect("/");
+  if (!cc || !id) redirect("/atletas");
 
   const persona = await getPersona(cc);
-  if (!persona) redirect("/");
+  if (!persona) redirect("/atletas");
 
   try {
     await activarMacrociclo({
@@ -458,10 +471,10 @@ export async function cerrarMacrocicloAction(formData: FormData) {
   const cc = getString(formData, "cc");
   const id = getInt(formData, "id");
 
-  if (!cc || !id) redirect("/");
+  if (!cc || !id) redirect("/atletas");
 
   const persona = await getPersona(cc);
-  if (!persona) redirect("/");
+  if (!persona) redirect("/atletas");
 
   await cerrarMacrociclo({ id, personaId: persona.id, context: getContext() });
 
@@ -472,10 +485,10 @@ export async function eliminarMacrocicloAction(formData: FormData) {
   const cc = getString(formData, "cc");
   const id = getInt(formData, "id");
 
-  if (!cc || !id) redirect("/");
+  if (!cc || !id) redirect("/atletas");
 
   const persona = await getPersona(cc);
-  if (!persona) redirect("/");
+  if (!persona) redirect("/atletas");
 
   await eliminarMacrociclo({
     id,

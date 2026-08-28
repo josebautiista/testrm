@@ -1,5 +1,19 @@
 export type TrainingGoal = "strength" | "hypertrophy" | "endurance";
 export type TrainingLevel = "beginner" | "intermediate" | "advanced";
+export type TrainingFase = "resistencia" | "fuerza" | "hipertrofia";
+
+export function isTrainingFase(value: unknown): value is TrainingFase {
+  return value === "resistencia" || value === "fuerza" || value === "hipertrofia";
+}
+
+export function getRecommendedGoalsForPhase(
+  fase: TrainingFase | null | undefined,
+): TrainingGoal[] {
+  if (fase === "resistencia") return ["endurance"];
+  if (fase === "fuerza") return ["strength"];
+  if (fase === "hipertrofia") return ["hypertrophy"];
+  return [];
+}
 
 export type TrainingPlan = {
   percentageRange: {

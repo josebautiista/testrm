@@ -1,35 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname } from "next/navigation";
 
-import { AdminButton } from "@/components/ui/AdminButton";
+import type { Role } from "@/lib/auth";
 
 const navItems = [
-  { href: "/admin", label: "Resumen" },
-  { href: "/admin/personas", label: "Personas" },
-  { href: "/admin/sesiones", label: "Sesiones" },
-  { href: "/admin/macrociclos", label: "Macrociclos" },
-  { href: "/admin/ejercicios", label: "Ejercicios" },
-  { href: "/admin/usuarios", label: "Usuarios" },
+  { href: "/admin", label: "Resumen", adminOnly: false },
+  { href: "/admin/personas", label: "Personas", adminOnly: false },
+  { href: "/admin/sesiones", label: "Sesiones", adminOnly: false },
+  { href: "/admin/macrociclos", label: "Macrociclos", adminOnly: false },
+  { href: "/admin/ejercicios", label: "Ejercicios", adminOnly: false },
+  { href: "/admin/usuarios", label: "Usuarios", adminOnly: true },
 ];
 
-export function AdminNav() {
+export function AdminNav({ role }: { role: Role }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [loggingOut, setLoggingOut] = useState(false);
-
-  async function handleLogout() {
-    setLoggingOut(true);
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } finally {
-      router.replace("/login");
-      router.refresh();
-      setLoggingOut(false);
-    }
-  }
+  const visibleNavItems = navItems.filter(
+    (item) => !item.adminOnly || role === "admin",
+  );
 
   return (
     <aside className="overflow-hidden rounded-2xl border border-border-subtle bg-bg-soft">
@@ -38,7 +27,7 @@ export function AdminNav() {
       </p>
       <nav className="p-2">
         <ul className="space-y-0.5">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const active =
               item.href === "/admin"
                 ? pathname === "/admin"
@@ -68,39 +57,6 @@ export function AdminNav() {
           })}
         </ul>
       </nav>
-
-      <div className="border-t border-border-subtle p-3">
-        <AdminButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => void handleLogout()}
-          disabled={loggingOut}
-          className="w-full justify-center gap-1.5"
-        >
-          {loggingOut ? (
-            "Saliendo..."
-          ) : (
-            <>
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3.5 w-3.5"
-              >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              Cerrar sesión
-            </>
-          )}
-        </AdminButton>
-      </div>
     </aside>
   );
 }

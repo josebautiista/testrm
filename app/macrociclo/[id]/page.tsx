@@ -141,7 +141,7 @@ export default async function MacrocicloDetallePage({
   const cc = typeof rawCC === "string" ? rawCC.trim() : "";
 
   if (!cc || !Number.isInteger(id) || id <= 0) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const persona = await prisma.persona.findUnique({
@@ -150,7 +150,7 @@ export default async function MacrocicloDetallePage({
   });
 
   if (!persona) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const macrociclo = await obtenerMacrocicloPorId(id);
@@ -165,6 +165,18 @@ export default async function MacrocicloDetallePage({
   const vo2max = getVo2maxInfo(
     (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null,
   );
+
+  // P-07/TASK-039: sesiones ya publicadas por el motor (SesionPlanificada),
+  // listas para registrar ejecución.
+  const sesionesPlanificadas = await prisma.sesionPlanificada.findMany({
+    where: { semana: { macrocicloId: id }, estado: { not: "omitida" } },
+    include: {
+      semana: { select: { numeroSemana: true, fechaInicio: true } },
+      _count: { select: { prescripciones: true } },
+    },
+    orderBy: [{ semana: { numeroSemana: "asc" } }, { orden: "asc" }],
+    take: 20,
+  });
 
   return (
     <main className="space-y-8 pb-10">
@@ -582,34 +594,76 @@ export default async function MacrocicloDetallePage({
         </section>
       ) : null}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      {sesionesPlanificadas.length > 0 ? (
+        <section className="space-y-3 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
+          <h2 className="text-lg font-semibold text-text-primary dark:text-white">
+            Sesiones planificadas
+          </h2>
+          <div className="divide-y divide-gray-200 dark:divide-white/10">
+            {sesionesPlanificadas.map((sp) => (
+              <div
+                key={sp.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-3"
+              >
+                <div>
+                  <p className="text-sm font-medium text-text-primary dark:text-white">
+                    Semana {sp.semana.numeroSemana} · Sesión {sp.orden}
+                  </p>
+                  <p className="text-xs text-text-secondary">
+                    {sp._count.prescripciones} ejercicio(s) ·{" "}
+                    <span className="capitalize">{sp.estado}</span>
+                  </p>
+                </div>
+                <PrimaryButton
+                  href={`/entrenamiento/${sp.id}?cc=${encodeURIComponent(cc)}`}
+                  className="w-auto px-4 py-2 text-sm"
+                >
+                  {sp.estado === "realizada" ? "Ver registro" : "Registrar"}
+                </PrimaryButton>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="flex flex-col flex-wrap gap-3 sm:flex-row">
+        {puedeEditar ? (
+          <PrimaryButton
+            href={`/macrociclo/${id}/generar?cc=${encodeURIComponent(cc)}`}
+            className="sm:w-auto"
+          >
+            Generar plan automáticamente
+          </PrimaryButton>
+        ) : null}
+
         {puedeEditar ? (
           <PrimaryButton
             href={`/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}`}
+            className="bg-bg-main text-text-secondary sm:w-auto dark:bg-bg-main dark:text-text-secondary"
           >
-            Editar macrociclo
+            Editar manualmente
           </PrimaryButton>
         ) : null}
 
         {puedeCerrar ? (
-          <form action={cerrarMacrocicloAction}>
+          <form action={cerrarMacrocicloAction} className="sm:w-auto">
             <input type="hidden" name="cc" value={cc} />
             <input type="hidden" name="id" value={id} />
             <FormSubmitButton
               pendingLabel="Cerrando..."
-              className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
+              className="bg-bg-main text-text-secondary sm:w-auto dark:bg-bg-main dark:text-text-secondary"
             >
               Cerrar macrociclo
             </FormSubmitButton>
           </form>
         ) : null}
 
-        <form action={eliminarMacrocicloAction}>
+        <form action={eliminarMacrocicloAction} className="sm:w-auto">
           <input type="hidden" name="cc" value={cc} />
           <input type="hidden" name="id" value={id} />
           <FormSubmitButton
             pendingLabel="Eliminando..."
-            className="border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-950/30 dark:text-red-200"
+            className="border-red-200 bg-red-50 text-red-700 sm:w-auto dark:border-red-500/20 dark:bg-red-950/30 dark:text-red-200"
           >
             Eliminar macrociclo
           </FormSubmitButton>
@@ -617,7 +671,7 @@ export default async function MacrocicloDetallePage({
 
         <PrimaryButton
           href={`/dashboard?cc=${encodeURIComponent(cc)}`}
-          className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
+          className="bg-bg-main text-text-secondary sm:w-auto dark:bg-bg-main dark:text-text-secondary"
         >
           Volver al dashboard
         </PrimaryButton>

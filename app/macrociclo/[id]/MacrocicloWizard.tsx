@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import {
   type ObjetivoTipo,
   type TipoEtapa,
@@ -19,10 +18,7 @@ import {
 } from "@/lib/macrociclo";
 import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
 import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
-import {
-  guardarPasoObjetivoFechasAction,
-  guardarMedidasAction,
-} from "@/actions/macrociclo";
+import { guardarPasoObjetivoFechasAction } from "@/actions/macrociclo";
 import {
   PasoRm,
   PasoVo2max,
@@ -118,40 +114,13 @@ type Persona = {
   cadera: number | null;
 };
 
-function buildMedidasIniciales(
-  medidasSnapshot: unknown,
-  persona: Pick<Persona, "masaCorporal" | "talla" | "cintura" | "cadera">,
-): Record<string, unknown> {
-  const snapshot = (medidasSnapshot as Record<string, unknown>) ?? {};
-  const medidasBasicasGuardadas =
-    (snapshot.medidasBasicas as Record<string, unknown>) ?? {};
-  const perimetrosGuardados =
-    (snapshot.perimetros as Record<string, unknown>) ?? {};
-
-  const perimetrosBase: Record<string, unknown> = {};
-  if (persona.cintura != null) perimetrosBase.cinturaCm = persona.cintura;
-  if (persona.cadera != null) perimetrosBase.caderaCm = persona.cadera;
-
-  return {
-    ...snapshot,
-    medidasBasicas: {
-      masaCorporalKg: persona.masaCorporal,
-      tallaCm: persona.talla * 100,
-      ...medidasBasicasGuardadas,
-    },
-    perimetros: {
-      ...perimetrosBase,
-      ...perimetrosGuardados,
-    },
-  };
-}
-
 type SesionRm = {
   id: number;
   createdAt: Date;
   peso: number | null;
   estimatedRM: number | null;
   finalRM: number | null;
+  rmMethod: string;
   resultados: Array<{
     ejercicioId: number;
     ejercicio: { nombre: string };
@@ -163,15 +132,14 @@ type SesionRm = {
 
 const PASOS = [
   { numero: 1, label: "Objetivo" },
-  { numero: 2, label: "Medidas" },
-  { numero: 3, label: "RM" },
-  { numero: 4, label: "VO2Max" },
-  { numero: 5, label: "Periodos" },
-  { numero: 6, label: "Etapas" },
-  { numero: 7, label: "Mesociclos" },
-  { numero: 8, label: "Semanas" },
-  { numero: 9, label: "Carga" },
-  { numero: 10, label: "Revisión" },
+  { numero: 2, label: "RM" },
+  { numero: 3, label: "VO2Max" },
+  { numero: 4, label: "Periodos" },
+  { numero: 5, label: "Etapas" },
+  { numero: 6, label: "Mesociclos" },
+  { numero: 7, label: "Semanas" },
+  { numero: 8, label: "Carga" },
+  { numero: 9, label: "Revisión" },
 ];
 
 export function MacrocicloWizard({
@@ -185,7 +153,9 @@ export function MacrocicloWizard({
   sesionesRm: SesionRm[];
   pasoInicial: number;
 }) {
-  const [paso, setPaso] = useState(Math.min(Math.max(pasoInicial, 1), 10));
+  const [paso, setPaso] = useState(
+    Math.min(Math.max(pasoInicial, 1), PASOS.length),
+  );
 
   const [objetivoTipo, setObjetivoTipo] = useState<ObjetivoTipo>(
     (macrociclo.objetivoTipo as ObjetivoTipo) || "salud",
@@ -201,9 +171,6 @@ export function MacrocicloWizard({
     macrociclo.fechaCompetencia ? toISODate(macrociclo.fechaCompetencia) : "",
   );
 
-  const [medidas, setMedidas] = useState<Record<string, unknown>>(() =>
-    buildMedidasIniciales(macrociclo.medidasSnapshot, persona),
-  );
   const [sesionRmId, setSesionRmId] = useState<number | "">(
     macrociclo.sesionRmId ?? "",
   );
@@ -218,9 +185,6 @@ export function MacrocicloWizard({
     vo2maxInicial?.metodo === "cooper"
       ? String(vo2maxInicial.distanciaMetros)
       : "",
-  );
-  const [vo2Directo, setVo2Directo] = useState(
-    vo2maxInicial?.metodo === "directo" ? String(vo2maxInicial.valor) : "",
   );
   const [vo2LegerEtapa, setVo2LegerEtapa] = useState(
     vo2maxInicial?.metodo === "leger" ? String(vo2maxInicial.etapa) : "",
@@ -334,31 +298,11 @@ export function MacrocicloWizard({
   const [semanasSeleccionadas, setSemanasSeleccionadas] = useState<number[]>([]);
 
   function irAPaso(nuevoPaso: number) {
-    setPaso(Math.min(Math.max(nuevoPaso, 1), 10));
+    setPaso(Math.min(Math.max(nuevoPaso, 1), PASOS.length));
   }
 
   async function handleObjetivoSubmit(formData: FormData) {
     await guardarPasoObjetivoFechasAction(formData);
-  }
-
-  function sanitizeMedidas(value: unknown): unknown {
-    if (Array.isArray(value)) {
-      return value.map(sanitizeMedidas);
-    }
-    if (value && typeof value === "object") {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).map(([k, v]) => [
-          k,
-          sanitizeMedidas(v),
-        ]),
-      );
-    }
-    if (value === "") return undefined;
-    return value;
-  }
-
-  function buildMedidasConfirmadas(): Record<string, unknown> {
-    return sanitizeMedidas(medidas) as Record<string, unknown>;
   }
 
   function buildPeriodizacionPayload() {
@@ -444,25 +388,16 @@ export function MacrocicloWizard({
         );
       case 2:
         return (
-          <PasoConfirmacionMedidas
-            cc={persona.cc}
-            macrocicloId={macrociclo.id}
-            medidas={medidas}
-            setMedidas={setMedidas}
-            buildMedidasConfirmadas={buildMedidasConfirmadas}
-          />
-        );
-      case 3:
-        return (
           <PasoRm
             cc={persona.cc}
             macrocicloId={macrociclo.id}
             sesionesRm={sesionesRm}
             sesionRmId={sesionRmId}
             setSesionRmId={setSesionRmId}
+            objetivoTipo={objetivoTipo}
           />
         );
-      case 4:
+      case 3:
         return (
           <PasoVo2max
             cc={persona.cc}
@@ -471,37 +406,35 @@ export function MacrocicloWizard({
             setMetodo={setVo2Metodo}
             cooperDistancia={vo2CooperDistancia}
             setCooperDistancia={setVo2CooperDistancia}
-            directo={vo2Directo}
-            setDirecto={setVo2Directo}
             legerEtapa={vo2LegerEtapa}
             setLegerEtapa={setVo2LegerEtapa}
           />
         );
-      case 5:
+      case 4:
         return (
           <PasoPeriodos
             periodos={periodos}
             setPeriodos={setPeriodos}
+            onContinuar={() => irAPaso(5)}
+          />
+        );
+      case 5:
+        return (
+          <PasoEtapas
+            etapas={etapas}
+            setEtapas={setEtapas}
             onContinuar={() => irAPaso(6)}
           />
         );
       case 6:
         return (
-          <PasoEtapas
-            etapas={etapas}
-            setEtapas={setEtapas}
+          <PasoMesociclos
+            mesociclos={mesociclos}
+            setMesociclos={setMesociclos}
             onContinuar={() => irAPaso(7)}
           />
         );
       case 7:
-        return (
-          <PasoMesociclos
-            mesociclos={mesociclos}
-            setMesociclos={setMesociclos}
-            onContinuar={() => irAPaso(8)}
-          />
-        );
-      case 8:
         return (
           <PasoSemanas
             cc={persona.cc}
@@ -532,10 +465,10 @@ export function MacrocicloWizard({
             setSemanasSeleccionadas={setSemanasSeleccionadas}
             resultadosRm={macrociclo.sesionRm?.resultados ?? []}
             buildPeriodizacionPayload={buildPeriodizacionPayload}
-            onContinuar={() => irAPaso(9)}
+            onContinuar={() => irAPaso(8)}
           />
         );
-      case 9:
+      case 8:
         return (
           <PasoCarga
             cc={persona.cc}
@@ -544,10 +477,10 @@ export function MacrocicloWizard({
               ...m,
               carga: m.carga as CargaMesocicloInputData | null,
             }))}
-            onContinuar={() => irAPaso(10)}
+            onContinuar={() => irAPaso(9)}
           />
         );
-      case 10:
+      case 9:
         return (
           <PasoRevision
             cc={persona.cc}
@@ -621,7 +554,7 @@ export function MacrocicloWizard({
           ← Atrás
         </button>
         <span className="text-sm text-text-secondary">
-          Paso {paso} de 11
+          Paso {paso} de {PASOS.length}
         </span>
       </div>
 
@@ -667,6 +600,25 @@ function PasoObjetivoFechas({
     }
   }
 
+  const sugerenciasDetalle = [
+    "Perder grasa",
+    "Mejorar masa muscular",
+    "Mejorar fuerza",
+    "Mejorar resistencia cardiovascular",
+    "Mantenimiento y salud general",
+    ...(objetivoTipo === "competencia"
+      ? ["Prepararme para una competencia"]
+      : []),
+  ];
+
+  const mesesRango =
+    fechaInicio && fechaFin
+      ? (new Date(`${fechaFin}T00:00:00`).getTime() -
+          new Date(`${fechaInicio}T00:00:00`).getTime()) /
+        (1000 * 60 * 60 * 24 * 30.44)
+      : null;
+  const rangoMenorASeisMeses = mesesRango !== null && mesesRango < 6;
+
   return (
     <form action={onSubmit} className="space-y-5">
       <input type="hidden" name="cc" value={cc} />
@@ -705,19 +657,33 @@ function PasoObjetivoFechas({
         </div>
       </div>
 
-      <label className="block space-y-2">
-        <span className="text-sm font-medium text-text-primary dark:text-white">
-          Detalle del objetivo
-        </span>
-        <input
-          type="text"
-          name="objetivoDetalle"
-          value={objetivoDetalle}
-          onChange={(e) => setObjetivoDetalle(e.target.value)}
-          placeholder="Ej. Mejorar composición corporal para competencia regional"
-          className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-        />
-      </label>
+      <div className="space-y-2">
+        <label className="block space-y-2">
+          <span className="text-sm font-medium text-text-primary dark:text-white">
+            Detalle del objetivo
+          </span>
+          <input
+            type="text"
+            name="objetivoDetalle"
+            value={objetivoDetalle}
+            onChange={(e) => setObjetivoDetalle(e.target.value)}
+            placeholder="Ej. Mejorar composición corporal para competencia regional"
+            className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {sugerenciasDetalle.map((sugerencia) => (
+            <button
+              key={sugerencia}
+              type="button"
+              onClick={() => setObjetivoDetalle(sugerencia)}
+              className="rounded-full border border-gray-200 bg-bg-main px-3 py-1 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-accent dark:border-white/10 dark:bg-bg-subtle"
+            >
+              {sugerencia}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block space-y-2">
@@ -768,141 +734,18 @@ function PasoObjetivoFechas({
         )}
       </div>
 
+      <p className="text-xs text-text-tertiary">
+        Se recomienda un mínimo de 6 a 8 meses para una adaptación adecuada.
+      </p>
+      {rangoMenorASeisMeses ? (
+        <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+          El periodo elegido es menor a 6 meses; esto puede limitar la
+          adaptación.
+        </p>
+      ) : null}
+
       <FormSubmitButton pendingLabel="Guardando...">Continuar</FormSubmitButton>
     </form>
   );
 }
 
-function PasoConfirmacionMedidas({
-  cc,
-  macrocicloId,
-  medidas,
-  setMedidas,
-  buildMedidasConfirmadas,
-}: {
-  cc: string;
-  macrocicloId: number;
-  medidas: Record<string, unknown>;
-  setMedidas: (value: Record<string, unknown>) => void;
-  buildMedidasConfirmadas: () => Record<string, unknown>;
-}) {
-  const [actualizarPersona, setActualizarPersona] = useState(true);
-
-  function updatePath(path: string, value: string) {
-    const keys = path.split(".");
-    const next = { ...medidas };
-    let current: Record<string, unknown> = next;
-    for (let i = 0; i < keys.length - 1; i++) {
-      current[keys[i]] = { ...(current[keys[i]] as Record<string, unknown>) };
-      current = current[keys[i]] as Record<string, unknown>;
-    }
-    const parsed = value === "" ? "" : Number(value.replace(",", "."));
-    current[keys[keys.length - 1]] = parsed;
-    setMedidas(next);
-  }
-
-  function getByPath(
-    obj: Record<string, unknown>,
-    path: string,
-  ): Record<string, number | string> {
-    const keys = path.split(".");
-    let current: unknown = obj;
-    for (const key of keys) {
-      if (current && typeof current === "object") {
-        current = (current as Record<string, unknown>)[key];
-      } else {
-        return {};
-      }
-    }
-    return (current as Record<string, number | string>) ?? {};
-  }
-
-  const grupos = [
-    { path: "medidasBasicas", label: "Medidas básicas" },
-    { path: "pliegues", label: "Pliegues" },
-    { path: "perimetros", label: "Perímetros" },
-    { path: "diametros", label: "Diámetros" },
-    { path: "composicionCorporal", label: "Composición corporal" },
-    { path: "adiposidad", label: "Adiposidad" },
-    {
-      path: "distribucionAdiposoMuscular.masaGrasa",
-      label: "Masa grasa — distribución (%)",
-    },
-    {
-      path: "distribucionAdiposoMuscular.tejidoMuscular",
-      label: "Tejido muscular — distribución (%)",
-    },
-    { path: "indicesSalud", label: "Índices de salud" },
-  ];
-
-  return (
-    <form action={guardarMedidasAction} className="space-y-5">
-      <input type="hidden" name="cc" value={cc} />
-      <input type="hidden" name="id" value={macrocicloId} />
-      <input
-        type="hidden"
-        name="medidas"
-        value={JSON.stringify(buildMedidasConfirmadas())}
-      />
-
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-text-primary dark:text-white">
-          Confirmar medidas extraídas
-        </h2>
-        <p className="text-sm text-text-secondary">
-          Revisa y corrige los datos antes de guardarlos.
-        </p>
-      </div>
-
-      <label className="flex items-center gap-2 text-sm text-text-secondary">
-        <input
-          type="checkbox"
-          name="actualizarPersona"
-          checked={actualizarPersona}
-          onChange={(e) => setActualizarPersona(e.target.checked)}
-          value={actualizarPersona ? "true" : "false"}
-          className="h-4 w-4 accent-accent"
-        />
-        Actualizar peso, talla, cintura y cadera en el perfil
-      </label>
-      <input type="hidden" name="actualizarPersona" value={actualizarPersona ? "true" : "false"} />
-
-      {grupos.map((grupo) => {
-        const datos = getByPath(medidas, grupo.path);
-        const entries = Object.entries(datos).filter(
-          ([, value]) => value !== undefined && value !== null,
-        );
-        if (entries.length === 0) return null;
-
-        return (
-          <section key={grupo.path} className="space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-text-tertiary">
-              {grupo.label}
-            </h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {entries.map(([key, value]) => (
-                <label key={key} className="block space-y-1">
-                  <span className="text-sm text-text-secondary">{key}</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={value ?? ""}
-                    onWheel={(e) => e.currentTarget.blur()}
-                    onChange={(e) =>
-                      updatePath(`${grupo.path}.${key}`, e.target.value)
-                    }
-                    className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
-                  />
-                </label>
-              ))}
-            </div>
-          </section>
-        );
-      })}
-
-      <FormSubmitButton pendingLabel="Guardando...">
-        Guardar y continuar
-      </FormSubmitButton>
-    </form>
-  );
-}

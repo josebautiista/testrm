@@ -23,11 +23,22 @@ function unauthorizedResponse() {
   return NextResponse.json({ error: "No autorizado." }, { status: 401 });
 }
 
+function forbiddenResponse() {
+  return NextResponse.json(
+    { error: "Solo un administrador puede gestionar usuarios." },
+    { status: 403 },
+  );
+}
+
 export async function PUT(request: NextRequest, context: RouteContext) {
   const authUser = await getAuthUserFromRequest(request);
 
   if (!authUser) {
     return unauthorizedResponse();
+  }
+
+  if (authUser.role !== "admin") {
+    return forbiddenResponse();
   }
 
   const { id } = await context.params;
@@ -82,6 +93,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
   if (!authUser) {
     return unauthorizedResponse();
+  }
+
+  if (authUser.role !== "admin") {
+    return forbiddenResponse();
   }
 
   const { id } = await context.params;

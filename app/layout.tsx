@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { AppThemeToggle } from "../components/ui/AppThemeToggle";
+import { AppHeader, PublicHeader } from "../components/layout/AppHeader";
 import { NumberInputWheelGuard } from "../components/ui/NumberInputWheelGuard";
+import { ThemeScript } from "../components/ui/ThemeScript";
 import { ensureDefaultAdminUser } from "@/lib/bootstrap";
+import { getAuthUserFromCookies } from "@/lib/auth";
 import "./globals.css";
 
 const inter = Inter({
@@ -15,12 +17,13 @@ export const metadata: Metadata = {
   description: "Registro simple de sesiones y progreso de fuerza",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   void ensureDefaultAdminUser();
+  const authUser = await getAuthUserFromCookies();
 
   return (
     <html
@@ -29,16 +32,24 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <script src="/theme-script.js" />
+        <ThemeScript />
       </head>
-      <body className="min-h-full bg-white font-sans text-gray-900 selection:bg-accent/25 dark:bg-bg-main dark:text-white">
-        <div className="pointer-events-none fixed inset-x-0 top-5 z-50">
-          <div className="pointer-events-auto mx-auto flex w-full max-w-105 items-center justify-between px-4 lg:max-w-6xl">
-            <div aria-hidden="true" className="h-10 w-10" />
-            <AppThemeToggle />
-          </div>
-        </div>
-        <div className="mx-auto min-h-screen w-full max-w-105 px-4 py-6 lg:max-w-6xl">
+      <body className="flex min-h-full flex-col bg-white font-sans text-gray-900 selection:bg-accent/25 dark:bg-bg-main dark:text-white">
+        {authUser ? (
+          <AppHeader username={authUser.username} role={authUser.role} />
+        ) : (
+          <PublicHeader />
+        )}
+        {/* flex + flex-1 (no min-h-screen aquí): el header de arriba ya
+            ocupa espacio real en el flujo, así que el contenido debe llenar
+            lo que queda del viewport, no otro 100vh completo — si no,
+            cualquier página hija que se centra verticalmente queda
+            descentrada y con scroll de sobra. Es "flex flex-col" (no solo
+            un div normal) para que una página hija pueda apoyarse en su
+            propio "flex-1" y llenar justo ese alto disponible — un
+            min-h-full ahí no resuelve de forma fiable contra un ancestro
+            cuyo alto viene de flex-grow. */}
+        <div className="mx-auto flex w-full max-w-105 flex-1 flex-col px-4 py-6 lg:max-w-6xl">
           {children}
         </div>
         <NumberInputWheelGuard />

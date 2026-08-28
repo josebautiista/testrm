@@ -5,11 +5,19 @@ import { useRouter } from "next/navigation";
 
 import { AdminButton } from "@/components/ui/AdminButton";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import type { Role } from "@/lib/auth";
 
 type UserView = {
   id: string;
   username: string;
+  role: Role;
   createdAt: string;
+};
+
+const ROLE_LABELS: Record<Role, string> = {
+  admin: "Administrador",
+  entrenador: "Entrenador",
 };
 
 function formatDateTime(value: string) {
@@ -75,8 +83,20 @@ function UserRow({
 
         {/* Info */}
         <span className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-sm font-medium text-text-primary dark:text-white">
-            {user.username}
+          <span className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-text-primary dark:text-white">
+              {user.username}
+            </span>
+            <span
+              className={[
+                "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                user.role === "admin"
+                  ? "bg-accent/15 text-accent"
+                  : "bg-bg-subtle text-text-tertiary",
+              ].join(" ")}
+            >
+              {ROLE_LABELS[user.role]}
+            </span>
           </span>
           <span className="block text-xs text-text-tertiary">
             {formatDateTime(user.createdAt)}
@@ -154,9 +174,9 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<Role>("entrenador");
   const [passwordByUser, setPasswordByUser] = useState<Record<string, string>>(
     {},
   );
@@ -213,7 +233,11 @@ export default function AdminPanel() {
       const response = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: newUsername, password: newPassword }),
+        body: JSON.stringify({
+          username: newUsername,
+          password: newPassword,
+          role: newRole,
+        }),
       });
 
       if (!response.ok) {
@@ -223,6 +247,7 @@ export default function AdminPanel() {
 
       setNewUsername("");
       setNewPassword("");
+      setNewRole("entrenador");
       await loadUsers();
     } catch {
       setError("No se pudo crear el usuario.");
@@ -284,60 +309,8 @@ export default function AdminPanel() {
     }
   }
 
-  async function handleLogout() {
-    setLoggingOut(true);
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } finally {
-      router.replace("/login");
-      router.refresh();
-      setLoggingOut(false);
-    }
-  }
-
   return (
     <main className="mx-auto w-full max-w-3xl space-y-5 pb-16">
-      {/* ── Header ── */}
-      <header className="flex items-center justify-between rounded-2xl border border-border-subtle bg-bg-soft px-5 py-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-            Panel de administración
-          </h1>
-          <p className="mt-0.5 text-xs text-text-tertiary">
-            Gestión de usuarios · Autenticación JWT
-          </p>
-        </div>
-        <AdminButton
-          type="button"
-          variant="ghost"
-          size="md"
-          onClick={handleLogout}
-          disabled={loggingOut}
-        >
-          {loggingOut ? (
-            "Saliendo..."
-          ) : (
-            <span className="flex items-center gap-1.5">
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3.5 w-3.5"
-              >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              Cerrar sesión
-            </span>
-          )}
-        </AdminButton>
-      </header>
-
       {/* ── Error banner ── */}
       {error && (
         <div
@@ -391,7 +364,7 @@ export default function AdminPanel() {
         </div>
 
         <form onSubmit={handleCreateUser} className="p-4">
-          <div className="grid gap-2.5 sm:grid-cols-[1fr_1fr_auto]">
+          <div className="grid gap-2.5 sm:grid-cols-[1fr_1fr_auto_auto]">
             <Input
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
@@ -408,6 +381,16 @@ export default function AdminPanel() {
               autoComplete="new-password"
               required
               className="py-2.5 text-sm"
+            />
+            <Select
+              value={newRole}
+              onChange={(v) => setNewRole(v as Role)}
+              options={[
+                { value: "entrenador", label: "Entrenador" },
+                { value: "admin", label: "Administrador" },
+              ]}
+              className="py-2.5 text-sm"
+              ariaLabel="Rol del nuevo usuario"
             />
             <AdminButton
               type="submit"

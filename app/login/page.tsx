@@ -50,9 +50,14 @@ function LoginForm() {
         return;
       }
 
+      const payload = (await response.json()) as {
+        user?: { role?: string };
+      };
+      const roleHome = payload.user?.role === "admin" ? "/admin" : "/atletas";
+
       const fromPath = searchParams.get("from");
       const destination =
-        fromPath && fromPath.startsWith("/") ? fromPath : "/admin";
+        fromPath && fromPath.startsWith("/") ? fromPath : roleHome;
 
       router.replace(destination);
       router.refresh();
@@ -64,13 +69,13 @@ function LoginForm() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4 py-10">
+    <main className="mx-auto flex w-full max-w-md flex-1 items-center px-4 py-10">
       <section className="w-full rounded-2xl border border-gray-200 bg-bg-soft p-6 shadow-sm dark:border-white/8 dark:shadow-none">
         <h1 className="text-2xl font-semibold tracking-tight text-text-primary dark:text-white">
           Iniciar sesion
         </h1>
         <p className="mt-2 text-sm text-text-secondary">
-          Ingresa con tus credenciales para administrar usuarios.
+          Ingresa con tus credenciales de entrenador para continuar.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
@@ -124,7 +129,7 @@ function LoginForm() {
 
 function LoginFallback() {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4 py-10">
+    <main className="mx-auto flex w-full max-w-md flex-1 items-center px-4 py-10">
       <section className="w-full rounded-2xl border border-gray-200 bg-bg-soft p-6 shadow-sm dark:border-white/8 dark:shadow-none">
         <h1 className="text-2xl font-semibold tracking-tight text-text-primary dark:text-white">
           Iniciar sesion

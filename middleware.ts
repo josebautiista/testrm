@@ -12,9 +12,27 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Gestión de cuentas (crear/editar entrenadores) es exclusiva de admin —
+  // el resto de /admin/** (personas, sesiones, macrociclos, ejercicios)
+  // sigue siendo operado por cualquier entrenador.
+  if (
+    request.nextUrl.pathname.startsWith("/admin/usuarios") &&
+    authUser.role !== "admin"
+  ) {
+    return NextResponse.redirect(new URL("/admin", request.url));
+  }
+
   return NextResponse.next();
 }
 
+// D-19/Q-06: antes solo /admin/** requería sesión — todo el flujo de
+// persona viajaba como `?cc=` en la URL, así que conocer una cédula daba
+// acceso completo de lectura y escritura a datos de salud de terceros. El
+// producto ahora es operado por el entrenador (A1/Q-02): toda la app
+// requiere la misma sesión, salvo login, la landing pública ("/") y los
+// endpoints que sostienen el login.
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: [
+    "/((?!login$|api/auth|api/logout|_next/static|_next/image|favicon.ico|$).*)",
+  ],
 };

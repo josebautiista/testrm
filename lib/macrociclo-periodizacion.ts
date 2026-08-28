@@ -11,6 +11,10 @@ import {
   type TipoPeriodo,
   diasEntre,
 } from "./macrociclo";
+import {
+  DistribucionSemanasError,
+  distribuirSemanasPorMayorResto,
+} from "./planificacion/estructura";
 
 export type PeriodizacionInput = {
   fechaInicio: Date;
@@ -27,6 +31,14 @@ export type PeriodizacionOutput = {
   periodos: PeriodoCalculado[];
   mesociclos: MesocicloCalculado[];
   semanas: SemanaCalculada[];
+  /**
+   * Mensajes de error de la distribución de semanas (F-08 / D-10), p. ej.
+   * "menos semanas que bloques". Nunca se lanza una excepción desde
+   * calcularPeriodizacion: cuando hay errores, el nivel afectado (periodos,
+   * mesociclos) se devuelve vacío y el llamador decide cómo mostrarlo o si
+   * bloquea el guardado (ver services/macrociclo.service.ts).
+   */
+  errores: string[];
 };
 
 function addDays(date: Date, days: number): Date {
@@ -90,60 +102,49 @@ function completarPorcentajes(
   return items;
 }
 
-function distribuirSemanas(
+/**
+ * Reparte semanas por mayor resto (F-08). Nunca lanza: si la distribución no
+ * es posible (menos semanas que bloques activos), registra el motivo en
+ * `errores` y devuelve todos los ítems en 0 semanas.
+ */
+function distribuirSemanasSeguro(
   totalSemanas: number,
   items: { tipo: string; porcentaje: number }[],
+  contexto: string,
+  errores: string[],
 ): { tipo: string; semanas: number }[] {
-  if (totalSemanas <= 0) {
-    return items.map((item) => ({ tipo: item.tipo, semanas: 0 }));
-  }
-
-  let asignadas = items.map((item) => ({
-    tipo: item.tipo,
-    porcentaje: item.porcentaje,
-    semanas: 0,
-  }));
-
-  let usadas = 0;
-  asignadas = asignadas.map((item) => {
-    if (item.porcentaje <= 0) return { ...item, semanas: 0 };
-    const raw = Math.round((totalSemanas * item.porcentaje) / 100);
-    const semanas = Math.max(1, raw);
-    usadas += semanas;
-    return { ...item, semanas };
-  });
-
-  const diferencia = totalSemanas - usadas;
-
-  if (diferencia !== 0) {
-    const activos = asignadas
-      .map((item, index) => ({ ...item, index }))
-      .filter((item) => item.porcentaje > 0);
-
-    if (activos.length > 0) {
-      activos.sort((a, b) => b.porcentaje - a.porcentaje);
-      const targetIndex = activos[0].index;
-      asignadas[targetIndex] = {
-        ...asignadas[targetIndex],
-        semanas: Math.max(1, asignadas[targetIndex].semanas + diferencia),
-      };
+  try {
+    return distribuirSemanasPorMayorResto(totalSemanas, items);
+  } catch (error) {
+    if (error instanceof DistribucionSemanasError) {
+      errores.push(`${contexto}: ${error.message}`);
+      return items.map((item) => ({ tipo: item.tipo, semanas: 0 }));
     }
+    throw error;
   }
-
-  return asignadas.map((item) => ({
-    tipo: item.tipo,
-    semanas: item.semanas,
-  }));
 }
 
 function asignarFechasConsecutivas(
   inicio: Date,
   distribucion: { tipo: string; semanas: number }[],
+  finLimite?: Date,
 ): Array<{ tipo: string; fechaInicio: Date; fechaFin: Date; semanas: number }> {
   let current = startOfDay(inicio);
-  return distribucion.map((item) => {
+  return distribucion.map((item, index) => {
     const dias = Math.max(0, item.semanas * 7 - 1);
-    const fin = addDays(current, dias);
+    let fin = addDays(current, dias);
+
+    // La última semana calendario del macrociclo puede ser parcial (menos
+    // de 7 días) si el rango total no es múltiplo exacto de 7 días. Todos
+    // los bloques anteriores usan semanas completas por construcción, así
+    // que solo el último bloque de la cadena puede heredar ese faltante;
+    // sin este ajuste, R-16 invariante #2 se violaba en cualquier
+    // macrociclo cuya duración no cayera en un múltiplo exacto de semanas.
+    const esUltimo = index === distribucion.length - 1;
+    if (esUltimo && finLimite && fin > finLimite) {
+      fin = new Date(finLimite);
+    }
+
     const rango = {
       tipo: item.tipo,
       fechaInicio: new Date(current),
@@ -161,17 +162,20 @@ function calcularPeriodos(
   totalSemanas: number,
   periodosInput: PeriodoInput[],
   etapasPorPeriodo: Record<TipoPeriodo, EtapaInput[]>,
+  errores: string[],
 ): PeriodoCalculado[] {
   const completados = completarPorcentajes(
     periodosInput.map((p) => ({ tipo: p.tipo, porcentaje: p.porcentaje })),
   );
 
-  const distribuidos = distribuirSemanas(
+  const distribuidos = distribuirSemanasSeguro(
     totalSemanas,
     completados.map((p) => ({ tipo: p.tipo, porcentaje: p.porcentaje })),
+    "Periodos",
+    errores,
   );
 
-  const rangos = asignarFechasConsecutivas(fechaInicio, distribuidos);
+  const rangos = asignarFechasConsecutivas(fechaInicio, distribuidos, fechaFin);
 
   return rangos.map((rango, index) => {
     const tipo = rango.tipo as TipoPeriodo;
@@ -180,12 +184,14 @@ function calcularPeriodos(
       etapasInput.map((e) => ({ tipo: e.tipo, porcentaje: e.porcentaje })),
     );
 
-    const semanasEtapa = distribuirSemanas(
+    const semanasEtapa = distribuirSemanasSeguro(
       rango.semanas,
       etapasCompletadas.map((e) => ({ tipo: e.tipo, porcentaje: e.porcentaje })),
+      `Etapas de ${tipo}`,
+      errores,
     );
 
-    const rangosEtapa = asignarFechasConsecutivas(rango.fechaInicio, semanasEtapa);
+    const rangosEtapa = asignarFechasConsecutivas(rango.fechaInicio, semanasEtapa, rango.fechaFin);
 
     const etapas: EtapaCalculada[] = rangosEtapa.map((re, idx) => ({
       tipo: re.tipo as TipoEtapa,
@@ -217,14 +223,17 @@ function calcularMesociclos(
     fechaFin: Date;
     mesCalendario: number;
   }>,
+  errores: string[],
 ): MesocicloCalculado[] {
   const items = mesociclosInput.map((m) => ({ tipo: m.tipo, porcentaje: m.porcentaje }));
   const completados = completarPorcentajes(items);
-  const distribuidos = distribuirSemanas(
+  const distribuidos = distribuirSemanasSeguro(
     totalSemanas,
     completados.map((m) => ({ tipo: m.tipo, porcentaje: m.porcentaje })),
+    "Mesociclos",
+    errores,
   );
-  const rangos = asignarFechasConsecutivas(fechaInicio, distribuidos);
+  const rangos = asignarFechasConsecutivas(fechaInicio, distribuidos, fechaFin);
 
   return rangos.map((rango, index) => {
     const semanasMesociclo = semanasBase.filter(
@@ -256,6 +265,7 @@ function calcularMesociclos(
 export function calcularPeriodizacion(
   input: PeriodizacionInput,
 ): PeriodizacionOutput {
+  const errores: string[] = [];
   const fechaInicio = startOfDay(input.fechaInicio);
   const fechaFin = startOfDay(input.fechaFin);
   const semanasBase = generarSemanasRango(fechaInicio, fechaFin);
@@ -267,6 +277,7 @@ export function calcularPeriodizacion(
     totalSemanas,
     input.periodos,
     input.etapasPorPeriodo,
+    errores,
   );
 
   const mesociclos = calcularMesociclos(
@@ -275,6 +286,7 @@ export function calcularPeriodizacion(
     totalSemanas,
     input.mesociclos,
     semanasBase,
+    errores,
   );
 
     const semanas: SemanaCalculada[] = semanasBase.map((semanaBase) => ({
@@ -298,6 +310,7 @@ export function calcularPeriodizacion(
     periodos,
     mesociclos,
     semanas,
+    errores,
   };
 }
 

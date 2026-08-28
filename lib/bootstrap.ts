@@ -29,6 +29,7 @@ async function createAdminIfMissing() {
     data: {
       username: DEFAULT_ADMIN_USERNAME,
       password,
+      role: "admin",
     },
   });
 }
