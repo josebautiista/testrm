@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `macrociclomesociclo` ADD COLUMN `intensidadMaxPct` DOUBLE NULL,
+ALTER TABLE `MacrocicloMesociclo` ADD COLUMN `intensidadMaxPct` DOUBLE NULL,
     ADD COLUMN `intensidadMinPct` DOUBLE NULL,
     ADD COLUMN `objetivoBloque` VARCHAR(191) NULL,
     ADD COLUMN `progresion` VARCHAR(191) NULL,
@@ -9,7 +9,7 @@ ALTER TABLE `macrociclomesociclo` ADD COLUMN `intensidadMaxPct` DOUBLE NULL,
     ADD COLUMN `seriesSemanalesPorPatron` JSON NULL;
 
 -- AlterTable
-ALTER TABLE `macrociclosemana` ADD COLUMN `esDeload` BOOLEAN NOT NULL DEFAULT false,
+ALTER TABLE `MacrocicloSemana` ADD COLUMN `esDeload` BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN `factorIntensidad` DOUBLE NOT NULL DEFAULT 1,
     ADD COLUMN `factorVolumen` DOUBLE NOT NULL DEFAULT 1,
     ADD COLUMN `origen` VARCHAR(191) NOT NULL DEFAULT 'generado';

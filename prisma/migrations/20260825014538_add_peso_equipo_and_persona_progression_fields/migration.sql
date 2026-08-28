@@ -1,7 +1,7 @@
 -- AlterTable
-ALTER TABLE `persona` ADD COLUMN `faseEntrenamiento` VARCHAR(191) NULL,
+ALTER TABLE `Persona` ADD COLUMN `faseEntrenamiento` VARCHAR(191) NULL,
     ADD COLUMN `faseInicioAt` DATETIME(3) NULL,
     ADD COLUMN `nivelOverride` VARCHAR(191) NULL;
 
 -- AlterTable
-ALTER TABLE `resultadoejercicio` ADD COLUMN `pesoEquipo` DOUBLE NOT NULL DEFAULT 0;
+ALTER TABLE `ResultadoEjercicio` ADD COLUMN `pesoEquipo` DOUBLE NOT NULL DEFAULT 0;
