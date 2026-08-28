@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `rmvigente` ADD COLUMN `serieRealizadaId` INTEGER NULL;
+ALTER TABLE `RmVigente` ADD COLUMN `serieRealizadaId` INTEGER NULL;
 
 -- CreateTable
 CREATE TABLE `SesionRealizada` (

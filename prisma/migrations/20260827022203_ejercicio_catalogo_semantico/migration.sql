@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `ejercicio` ADD COLUMN `activo` BOOLEAN NOT NULL DEFAULT true,
+ALTER TABLE `Ejercicio` ADD COLUMN `activo` BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN `admitePorcentajeRm` BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN `enBateriaEvaluacion` BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN `equipamiento` VARCHAR(191) NOT NULL DEFAULT 'otro',

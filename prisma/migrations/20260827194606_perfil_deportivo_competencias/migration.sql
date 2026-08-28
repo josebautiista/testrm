@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `macrociclo` ADD COLUMN `capacidadDominante` VARCHAR(191) NULL,
+ALTER TABLE `Macrociclo` ADD COLUMN `capacidadDominante` VARCHAR(191) NULL,
     ADD COLUMN `estructuraCalendario` VARCHAR(191) NULL,
     ADD COLUMN `nivelAtleta` VARCHAR(191) NULL;
 

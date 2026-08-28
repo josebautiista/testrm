@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `resultadoejercicio` ADD COLUMN `confianza` VARCHAR(191) NULL,
+ALTER TABLE `ResultadoEjercicio` ADD COLUMN `confianza` VARCHAR(191) NULL,
     ADD COLUMN `formulaPrimaria` VARCHAR(191) NULL,
     ADD COLUMN `fueraDeRango` BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN `rirReportado` INTEGER NULL,
