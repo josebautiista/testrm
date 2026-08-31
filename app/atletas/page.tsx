@@ -1,6 +1,8 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 
 import { BuscarAtletaForm } from "@/components/atletas/BuscarAtletaForm";
+import { getAuthUserFromCookies } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { evaluarVigencia } from "@/lib/rm/vigente";
 
@@ -13,9 +15,14 @@ function formatDaysAgo(date: Date | null) {
 }
 
 export default async function AtletasPage() {
+  const authUser = await getAuthUserFromCookies();
+  const personaWhere: Prisma.PersonaWhereInput =
+    authUser?.role === "admin" ? {} : { entrenadorId: authUser?.userId ?? "" };
+
   const [personas, rmVigentes, ajustesPendientes, macrociclosAbiertos, ultimasSesiones] =
     await Promise.all([
       prisma.persona.findMany({
+        where: personaWhere,
         select: { id: true, cc: true, nombre: true },
         orderBy: { nombre: "asc" },
       }),

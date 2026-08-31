@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
+import { getAuthUserFromCookies } from "@/lib/auth";
 import { createPersona as createPersonaService } from "@/services/persona.service";
 import {
   updateMedidasBasicas,
@@ -153,7 +154,11 @@ export async function createPersona(
   data: CreatePersonaInput,
 ): Promise<{ ok: true; cc: string } | { ok: false; error: string }> {
   try {
-    const persona = await createPersonaService(data);
+    const authUser = await getAuthUserFromCookies();
+    const persona = await createPersonaService({
+      ...data,
+      entrenadorId: authUser?.userId ?? null,
+    });
 
     return { ok: true, cc: persona.cc };
   } catch (error) {

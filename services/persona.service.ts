@@ -18,6 +18,7 @@ export type PersonaInput = {
   edad: number;
   talla: number;
   entrenado: boolean;
+  entrenadorId?: string | null;
 };
 
 export type PersonaUpdateInput = PersonaInput & {
@@ -39,6 +40,7 @@ export type NormalizedPersonaInput = {
   edad: number;
   talla: number;
   entrenado: boolean;
+  entrenadorId?: string | null;
 };
 
 function normalizeText(value: string): string {
@@ -74,6 +76,7 @@ export function normalizeAndValidatePersona(
     edad: input.edad,
     talla: normalizeHeightToMeters(input.talla),
     entrenado: Boolean(input.entrenado),
+    entrenadorId: input.entrenadorId ?? null,
   };
 
   validatePersonaInput(normalizedPersona);
@@ -155,7 +158,17 @@ export async function updatePersona(
   try {
     return await prisma.persona.update({
       where: { id: data.id },
-      data: cleanData,
+      data: {
+        cc: cleanData.cc,
+        nombre: cleanData.nombre,
+        sexo: cleanData.sexo,
+        masaCorporal: cleanData.masaCorporal,
+        cintura: cleanData.cintura,
+        cadera: cleanData.cadera,
+        edad: cleanData.edad,
+        talla: cleanData.talla,
+        entrenado: cleanData.entrenado,
+      },
       select: {
         id: true,
         cc: true,

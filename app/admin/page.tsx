@@ -1,12 +1,20 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 
 import { Card } from "@/components/admin/Card";
 import { StatCard } from "@/components/admin/StatCard";
 import { Table } from "@/components/admin/Table";
 import { formatDateTime } from "@/lib/admin";
+import { getAuthUserFromCookies } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminPage() {
+  const authUser = await getAuthUserFromCookies();
+  const personaWhere: Prisma.PersonaWhereInput =
+    authUser?.role === "admin" ? {} : { entrenadorId: authUser?.userId ?? "" };
+  const sesionWhere: Prisma.SesionWhereInput =
+    authUser?.role === "admin" ? {} : { persona: { entrenadorId: authUser?.userId ?? "" } };
+
   const [
     totalPersonas,
     totalSesiones,
@@ -15,11 +23,12 @@ export default async function AdminPage() {
     latestPersonas,
     latestSesiones,
   ] = await prisma.$transaction([
-    prisma.persona.count(),
-    prisma.sesion.count(),
+    prisma.persona.count({ where: personaWhere }),
+    prisma.sesion.count({ where: sesionWhere }),
     prisma.ejercicio.count(),
     prisma.resultadoEjercicio.count(),
     prisma.persona.findMany({
+      where: personaWhere,
       orderBy: { createdAt: "desc" },
       take: 6,
       include: {
@@ -27,6 +36,7 @@ export default async function AdminPage() {
       },
     }),
     prisma.sesion.findMany({
+      where: sesionWhere,
       orderBy: { createdAt: "desc" },
       take: 6,
       include: {

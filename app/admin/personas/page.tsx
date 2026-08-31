@@ -1,9 +1,11 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 
 import { Card } from "@/components/admin/Card";
 import { Pagination } from "@/components/admin/Pagination";
 import { Table } from "@/components/admin/Table";
 import { parsePageParam } from "@/lib/admin";
+import { getAuthUserFromCookies } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const PAGE_SIZE = 12;
@@ -18,9 +20,14 @@ export default async function AdminPersonasPage({
   const resolvedSearchParams = await searchParams;
   const page = parsePageParam(resolvedSearchParams.page);
 
+  const authUser = await getAuthUserFromCookies();
+  const personaWhere: Prisma.PersonaWhereInput =
+    authUser?.role === "admin" ? {} : { entrenadorId: authUser?.userId ?? "" };
+
   const [total, personas] = await prisma.$transaction([
-    prisma.persona.count(),
+    prisma.persona.count({ where: personaWhere }),
     prisma.persona.findMany({
+      where: personaWhere,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,

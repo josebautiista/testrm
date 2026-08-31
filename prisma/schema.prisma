@@ -30,6 +30,11 @@ model Persona {
   equipamiento        Json?     // string[]
   limitaciones         String?
 
+  // Entrenador que registró al atleta. Determina qué entrenador puede verlo
+  // en sus listados; los admin ven todos los atletas sin importar el dueño.
+  entrenadorId String?
+  entrenador   User?   @relation(fields: [entrenadorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -40,6 +45,7 @@ model Persona {
   ajustesPropuestos AjustePropuesto[]
 
   @@index([createdAt])
+  @@index([entrenadorId])
 }
 
 model Ejercicio {
@@ -178,6 +184,8 @@ model User {
   password  String
   role      String   @default("entrenador") // "admin" | "entrenador"
   createdAt DateTime @default(now())
+
+  personasRegistradas Persona[]
 }
 
 model Macrociclo {
