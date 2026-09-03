@@ -9,14 +9,13 @@ import {
   calculateOconnor,
   calculateRM,
   calculateWathen,
-  getMaxFormulaRM,
   roundToTwo,
   type RMResult,
   type SexoRM,
 } from "@/lib/rm/formulas";
 
 export type { RMResult, SexoRM };
-export { calculateRM, getMaxFormulaRM, roundToTwo };
+export { calculateRM, roundToTwo };
 
 export type StrengthIndexLabel =
   | "Bajo"

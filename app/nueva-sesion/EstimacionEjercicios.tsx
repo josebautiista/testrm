@@ -87,6 +87,7 @@ export function EstimacionEjercicios({
 
   const [segundosRestantes, setSegundosRestantes] = useState(0);
   const [segundosTotales, setSegundosTotales] = useState(0);
+  const [segundosAbdominales, setSegundosAbdominales] = useState(0);
 
   useEffect(() => {
     if (segundosRestantes <= 0) return;
@@ -97,6 +98,16 @@ export function EstimacionEjercicios({
 
     return () => window.clearInterval(intervalo);
   }, [segundosRestantes]);
+
+  useEffect(() => {
+    if (segundosAbdominales <= 0) return;
+
+    const intervalo = window.setInterval(() => {
+      setSegundosAbdominales((actual) => Math.max(actual - 1, 0));
+    }, 1000);
+
+    return () => window.clearInterval(intervalo);
+  }, [segundosAbdominales]);
 
   function actualizar(id: number, cambios: Partial<EstadoEjercicio>) {
     setEstados((actuales) => ({
@@ -170,7 +181,7 @@ export function EstimacionEjercicios({
           },
         ]}
         porQue={`La precisión de estas fórmulas cae aproximadamente un 1,5 % por cada repetición por encima de 8, y el 5RM es el mejor predictor individual del 1RM. Fuera de la ventana ${VENTANA_OPTIMA_TEST.min}–${VENTANA_OPTIMA_TEST.max} el número que sale es una cifra con apariencia de dato.`}
-        fuente="Reynolds, Gordon & Robergs (2006), JSCR · Fórmula primaria: Epley (ADR-01), con banda de dispersión entre las 8 fórmulas de referencia (ADR-02)."
+        fuente="Reynolds, Gordon & Robergs (2006), JSCR · Fórmula primaria: Epley (ADR-01)."
       />
 
       <Aviso tono="info" titulo="Orden de los ejercicios">
@@ -278,13 +289,25 @@ export function EstimacionEjercicios({
                     Este ejercicio se mide por tiempo, así que no genera un 1RM.
                     Se guarda como registro de resistencia muscular.
                   </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSegundosRestantes(0);
+                        setSegundosAbdominales(60);
+                      }}
+                      className="rounded-2xl border border-transparent bg-[var(--timer-abdominal)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+                    >
+                      Iniciar timer de abdominales
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <>
                   <div className="mt-3 grid gap-3 sm:grid-cols-3">
                     <label className="block">
                       <span className="text-sm font-medium text-text-primary dark:text-white">
-                        Peso levantado (kg)
+                        Peso de los discos, sin barra/equipo (kg)
                       </span>
                       <input
                         type="number"
@@ -299,6 +322,10 @@ export function EstimacionEjercicios({
                         }
                         className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-right tabular-nums text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
                       />
+                      <span className="mt-1 block text-xs leading-5 text-text-tertiary">
+                        Escribe únicamente el peso de los discos. La barra o
+                        máquina se registra en el siguiente campo.
+                      </span>
                     </label>
 
                     <label className="block">
@@ -364,20 +391,12 @@ export function EstimacionEjercicios({
 
                   {estimacion && ajuste ? (
                     <div className="mt-3 space-y-3">
-                      <div className="grid gap-3 rounded-2xl border border-gray-200 bg-bg-soft p-3 sm:grid-cols-3 dark:border-white/10 dark:bg-bg-main">
+                      <div className="grid gap-3 rounded-2xl border border-gray-200 bg-bg-soft p-3 sm:grid-cols-2 dark:border-white/10 dark:bg-bg-main">
                         <Metrica
                           etiqueta="1RM estimado"
                           valor={
                             estimacion.valor > 0
                               ? `${formatWeight(estimacion.valor)} kg`
-                              : "-"
-                          }
-                        />
-                        <Metrica
-                          etiqueta="Banda entre fórmulas"
-                          valor={
-                            estimacion.valor > 0
-                              ? `${formatWeight(estimacion.min)} – ${formatWeight(estimacion.max)} kg`
                               : "-"
                           }
                         />
@@ -414,6 +433,7 @@ export function EstimacionEjercicios({
                               });
                               setSegundosRestantes(180);
                               setSegundosTotales(180);
+                              setSegundosAbdominales(0);
                             }}
                             className="mt-2 block rounded-xl border border-transparent bg-text-primary px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90 dark:bg-white dark:text-black"
                           >
@@ -449,6 +469,7 @@ export function EstimacionEjercicios({
                   onClick={() => {
                     setSegundosRestantes(descansoEntreEjerciciosSeg);
                     setSegundosTotales(descansoEntreEjerciciosSeg);
+                    setSegundosAbdominales(0);
                   }}
                   className="mt-4 rounded-2xl border border-gray-200 px-4 py-2.5 text-xs font-semibold text-text-primary transition hover:bg-bg-soft dark:border-white/10 dark:text-white"
                 >
@@ -478,7 +499,25 @@ export function EstimacionEjercicios({
         </Aviso>
       ) : null}
 
-      {segundosRestantes > 0 ? (
+      {segundosAbdominales > 0 ? (
+        <div
+          className="fixed bottom-5 right-5 z-50 grid h-24 w-24 place-items-center rounded-full shadow-2xl"
+          style={{
+            background: `conic-gradient(var(--timer-abdominal) ${(segundosAbdominales / 60) * 100}%, var(--bg-subtle) 0)`,
+          }}
+          role="timer"
+          aria-label={`Timer de abdominales: ${segundosAbdominales} segundos`}
+        >
+          <div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-bg-main ring-1 ring-black/5 dark:bg-bg-soft dark:ring-white/10">
+            <span className="mb-1 max-w-[64px] text-center text-[9px] font-semibold uppercase leading-none tracking-normal text-[var(--timer-abdominal)]">
+              Abdominales
+            </span>
+            <span className="font-mono text-2xl font-semibold tabular-nums text-text-primary dark:text-white">
+              0:{String(segundosAbdominales).padStart(2, "0")}
+            </span>
+          </div>
+        </div>
+      ) : segundosRestantes > 0 ? (
         <div
           className="fixed bottom-5 right-5 z-50 grid h-24 w-24 place-items-center rounded-full shadow-2xl shadow-accent/30"
           style={{

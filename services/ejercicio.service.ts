@@ -36,7 +36,9 @@ function normalizarInput(input: EjercicioInput): EjercicioInput {
 
 export async function listarEjercicios(options?: { soloActivos?: boolean }) {
   return prisma.ejercicio.findMany({
-    where: options?.soloActivos ? { activo: true } : undefined,
+    where: options?.soloActivos
+      ? { activo: true, esEjercicioLibre: false }
+      : { esEjercicioLibre: false },
     orderBy: { id: "asc" },
   });
 }

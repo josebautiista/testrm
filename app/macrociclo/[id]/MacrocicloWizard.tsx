@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
+import { WizardScrollControls } from "@/components/ui/WizardScrollControls";
 import {
   type ObjetivoTipo,
   type TipoEtapa,
@@ -178,6 +179,25 @@ type SesionRm = {
   }>;
 };
 
+function leerRmSnapshot(value: unknown): {
+  sesionIds: number[];
+  resultados: ResultadoRm[];
+} {
+  if (!value || typeof value !== "object") {
+    return { sesionIds: [], resultados: [] };
+  }
+  const snapshot = value as { sesionIds?: unknown; resultados?: unknown };
+  const sesionIds = Array.isArray(snapshot.sesionIds)
+    ? snapshot.sesionIds.filter(
+        (id): id is number => Number.isInteger(id) && Number(id) > 0,
+      )
+    : [];
+  const resultados = Array.isArray(snapshot.resultados)
+    ? (snapshot.resultados as ResultadoRm[])
+    : [];
+  return { sesionIds, resultados };
+}
+
 /**
  * ADR-37: los tres pasos de porcentajes (Periodos, Etapas, Mesociclos) se
  * sustituyen por un único paso de Estructura, que ya no se rellena a mano
@@ -207,6 +227,7 @@ export function MacrocicloWizard({
   sesionesRm: SesionRm[];
   pasoInicial: number;
 }) {
+  const rmSnapshot = leerRmSnapshot(macrociclo.rmSnapshot);
   const [paso, setPaso] = useState(
     Math.min(Math.max(pasoInicial, 1), PASOS.length),
   );
@@ -222,8 +243,12 @@ export function MacrocicloWizard({
   );
   const [fechaFin, setFechaFin] = useState(toISODate(macrociclo.fechaFin));
 
-  const [sesionRmId, setSesionRmId] = useState<number | "">(
-    macrociclo.sesionRmId ?? "",
+  const [sesionRmIds, setSesionRmIds] = useState<number[]>(
+    rmSnapshot.sesionIds.length > 0
+      ? rmSnapshot.sesionIds
+      : macrociclo.sesionRmId
+        ? [macrociclo.sesionRmId]
+        : [],
   );
 
   const vo2maxInicial =
@@ -416,8 +441,8 @@ export function MacrocicloWizard({
             cc={persona.cc}
             macrocicloId={macrociclo.id}
             sesionesRm={sesionesRm}
-            sesionRmId={sesionRmId}
-            setSesionRmId={setSesionRmId}
+            sesionRmIds={sesionRmIds}
+            setSesionRmIds={setSesionRmIds}
             objetivoTipo={objetivoTipo}
           />
         );
@@ -466,7 +491,11 @@ export function MacrocicloWizard({
             setSemanasConfig={setSemanasConfig}
             semanasSeleccionadas={semanasSeleccionadas}
             setSemanasSeleccionadas={setSemanasSeleccionadas}
-            resultadosRm={macrociclo.sesionRm?.resultados ?? []}
+            resultadosRm={
+              rmSnapshot.resultados.length > 0
+                ? rmSnapshot.resultados
+                : macrociclo.sesionRm?.resultados ?? []
+            }
             buildPeriodizacionPayload={buildPeriodizacionPayload}
             onContinuar={() => irAPaso(PASO_WIZARD.carga)}
           />
@@ -492,7 +521,9 @@ export function MacrocicloWizard({
             objetivoTipo={objetivoTipo}
             fechaInicio={fechaInicio}
             fechaFin={fechaFin}
-            sesionRmId={sesionRmId}
+            sesionesRmSeleccionadas={sesionesRm.filter((sesion) =>
+              sesionRmIds.includes(sesion.id),
+            )}
             vo2maxSnapshot={
               (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null
             }
@@ -510,6 +541,7 @@ export function MacrocicloWizard({
 
   return (
     <div className="space-y-6">
+      <WizardScrollControls />
       <header className="space-y-2">
         <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
           Macrociclo de entrenamiento

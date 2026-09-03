@@ -22,27 +22,7 @@ naturalidad a la variante con RIR (F-03, ADR-consecuente para e1RM de entrenamie
 estaba implementada y en producción antes de este cambio.
 
 **Consecuencias.** Todo `rm1Estimado`/`ResultadoRm`/`RmVigente.origen=estimacion` usa
-Epley. Las otras 7 fórmulas se conservan como referencia (banda de incertidumbre, ver
-ADR-02), no como candidatas a estimador puntual.
-
-**Fecha.** 2026-08-27. **Estado.** Implementado.
-
----
-
-## ADR-02 · Por qué no se usa `max()` entre fórmulas, y qué significa la banda
-
-**Contexto.** D-02.
-
-**Decisión.** Las 8 fórmulas se calculan siempre, pero se reportan como
-`{ min, max }` (F-02, `getMinFormulaRM`/`getMaxFormulaRM` en `lib/rm/formulas.ts`) junto
-al valor puntual de Epley. La banda es la **dispersión entre modelos**, no un intervalo de
-confianza estadístico — debe presentarse así en la interfaz (`app/sesion/[id]/page.tsx`
-ya lo hace: "Banda de incertidumbre").
-
-**Consecuencias.** Ninguna decisión de prescripción (carga, clasificación de nivel) se
-basa en el máximo de la banda. El backfill histórico (`prisma/backfill-resultados.ts`)
-recalcula esta banda desde `carga`/`repeticiones` ya guardados, sin reinterpretar el
-valor viejo.
+Epley. Las otras fórmulas no determinan el estimador puntual.
 
 **Fecha.** 2026-08-27. **Estado.** Implementado.
 
@@ -483,7 +463,7 @@ exige `reps <= 5 && rir <= 1`) era inalcanzable y el techo real del sistema era 
 
 **Decisión.** Las fórmulas predictivas modelan repeticiones **hasta el fallo**. Si el
 atleta reporta RIR, las repeticiones efectivas son `repeticiones + rir` y ese es el valor
-que entra a Epley y a la banda. `fueraDeRango` y `noUtilizable` también se resuelven
+que entra a Epley. `fueraDeRango` y `noUtilizable` también se resuelven
 sobre las efectivas — una serie de 8 con 4 en reserva son 12 efectivas, y eso está fuera
 de la ventana de validez aunque "8" no lo estuviera.
 

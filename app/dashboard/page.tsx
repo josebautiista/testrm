@@ -214,16 +214,13 @@ export default async function DashboardPage({
           year: "numeric",
         }).format(macrocicloAbierto.fechaFin)}`
     : "";
-  const sessionItems = sesiones.map((sesion, index) => {
+  const sessionItems = sesiones.map((sesion) => {
     const exerciseCount = sesion.resultados.length;
     return {
       id: sesion.id,
       href: `/sesion/${sesion.id}?cc=${encodeURIComponent(cc)}`,
       fecha: formatSessionCardDate(sesion.createdAt),
-      nombre:
-        index === 0
-          ? "Sesión más reciente"
-          : `Sesión ${sesiones.length - index}`,
+      nombre: `Sesión del ${formatSessionCardDate(sesion.createdAt)}`,
       resumen:
         exerciseCount === 1
           ? "1 ejercicio registrado"

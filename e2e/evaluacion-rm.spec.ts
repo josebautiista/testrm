@@ -1,5 +1,5 @@
 // §16.3 flujo 1: alta y evaluación -> crear atleta -> evaluación de varios
-// ejercicios -> ver RM vigentes con banda. Cubre de paso D-01 (ya no hay
+// ejercicios -> ver RM vigentes. Cubre de paso D-01 (ya no hay
 // Math.max entre ejercicios) y D-05 (Casas exige pesos reales).
 import { expect, test } from "@playwright/test";
 
@@ -43,10 +43,15 @@ test.describe("Alta y evaluación de RM (flujo 1, §16.3)", () => {
     await page.locator('input[name="trainingMonths"]').fill("2");
     await page.getByRole("button", { name: "Continuar" }).click();
 
-    await expect(page.getByText("Realiza la mayor cantidad de repeticiones")).toBeVisible();
+    await expect(page.getByText("Cómo funciona la estimación de fuerza")).toBeVisible();
+    await page.getByRole("button", { name: "Iniciar timer de abdominales" }).click();
+    await expect(page.getByRole("timer", { name: /Timer de abdominales/ })).toBeVisible();
 
     // Rellenar reps para todos los ejercicios de la batería (pesos ya vienen prellenados).
-    const repInputs = page.locator('input[name^="repeticiones_"]');
+    const repInputs = page.getByRole("spinbutton", {
+      name: "Repeticiones",
+      exact: true,
+    });
     const total = await repInputs.count();
     expect(total).toBeGreaterThan(0);
     for (let i = 0; i < total; i += 1) {
@@ -65,10 +70,9 @@ test.describe("Alta y evaluación de RM (flujo 1, §16.3)", () => {
       expect(rm.origen).toBe("estimacion");
     }
 
-    // Ver la sesión: debe mostrar banda de incertidumbre y confianza (F-02).
+    // Ver la sesión: debe mostrar la estimación y su confianza.
     const sesion = await prisma.sesion.findFirstOrThrow({ where: { personaId } });
     await page.goto(`/sesion/${sesion.id}?cc=${encodeURIComponent(cc)}`);
-    await expect(page.getByText("Banda de incertidumbre").first()).toBeVisible();
     await expect(page.getByText("Confianza").first()).toBeVisible();
   });
 
@@ -93,20 +97,28 @@ test.describe("Alta y evaluación de RM (flujo 1, §16.3)", () => {
     await page.locator('input[name="trainingMonths"]').fill("12");
     await page.getByRole("button", { name: "Continuar" }).click();
 
-    await page.getByText("Protocolo Casas").click();
-    await expect(page.getByText("Registra al menos un peso realmente levantado")).toBeVisible();
+    const cribado = page.locator('input[type="checkbox"]');
+    for (let indice = 0; indice < 5; indice += 1) {
+      await cribado.nth(indice).check();
+    }
+    await page.locator("label").filter({ hasText: "Protocolo Casas" }).click();
+    await expect(page.getByText("Cómo funciona el Protocolo Casas")).toBeVisible();
 
     const guardarBtn = page.getByRole("button", { name: "Guardar sesión" });
     await expect(guardarBtn).toBeDisabled();
 
     // Ingresar un peso real hace que el botón se habilite.
-    await page.getByLabel("Ejercicio usado como base").fill("Press banca");
-    await page.getByLabel("RM de referencia").fill("100");
-    await page.getByLabel("Peso usado").fill("50");
-    await page.getByLabel("Peso usado").blur();
+    await page.getByPlaceholder("Ej. Press banca con barra").fill("Press banca");
+    await page.getByLabel("1RM previo de este ejercicio (kg)").fill("100");
+    await page.getByLabel("Peso real del paso 1").fill("50");
+    await page.getByLabel("Repeticiones reales del paso 1").fill("1");
+    await page.getByLabel("Paso 1 completado").check();
 
     await expect(guardarBtn).toBeEnabled({ timeout: 10_000 });
 
     await prisma.persona.delete({ where: { cc: ccCasas } }).catch(() => {});
+    await prisma.ejercicio.deleteMany({
+      where: { esEjercicioLibre: true, nombre: "Press banca" },
+    }).catch(() => {});
   });
 });

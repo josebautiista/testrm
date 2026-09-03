@@ -69,6 +69,7 @@ export default async function NuevaSesionPage({
   const personaSafe = persona;
 
   const ejerciciosDB = await prisma.ejercicio.findMany({
+    where: { esEjercicioLibre: false },
     select: {
       id: true,
       nombre: true,

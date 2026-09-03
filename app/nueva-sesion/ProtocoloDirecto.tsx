@@ -20,15 +20,6 @@ import {
   type PasoProtocolo,
 } from "@/lib/rm/protocolo";
 
-export type EjercicioProtocolo = {
-  id: number;
-  nombre: string;
-  incrementoMinimoKg: number;
-  patron: string;
-  rmVigenteKg: number | null;
-  rmVigenteFecha: string | null;
-};
-
 export type ProtocoloId = "casas" | "naclerio";
 
 type EstadoPaso = {
@@ -47,7 +38,6 @@ const ESTADO_VACIO: EstadoPaso = {
 
 type Props = {
   protocolo: ProtocoloId;
-  ejercicios: EjercicioProtocolo[];
   formatWeight: (value: number) => string;
   onRmMedidoChange?: (rm: number) => void;
 };
@@ -71,7 +61,7 @@ const DEFINICIONES: Record<
       "Es un test directo: no calcula tu fuerza con una fórmula, la mide. Subes la carga por escalones hasta el peso más alto que puedas levantar una vez con técnica válida. Ese peso es tu RM.",
     pasosGuia: [
       {
-        titulo: "Elige el ejercicio y confirma el RM de referencia",
+        titulo: "Escribe el ejercicio y su RM previo",
         detalle:
           "Si ya tienes un RM registrado se rellena solo. Si no, pon tu mejor estimación: solo sirve para calcular los pesos de aproximación.",
       },
@@ -109,7 +99,7 @@ const DEFINICIONES: Record<
       "Ocho series de 2 a 3 repeticiones con cargas crecientes, ejecutando cada repetición a la máxima velocidad posible. Al terminar cada serie reportas cuánto esfuerzo te costó en una escala de 0 a 10. El RM es el peso más alto que completes.",
     pasosGuia: [
       {
-        titulo: "Elige el ejercicio y confirma el RM de referencia",
+        titulo: "Escribe el ejercicio y su RM previo",
         detalle:
           "Los porcentajes de cada serie se calculan sobre él. Si te equivocas por mucho, el test se alarga pero no se invalida: siempre manda el peso real.",
       },
@@ -155,13 +145,12 @@ function redondear(peso: number, incremento: number) {
 
 export function ProtocoloDirecto({
   protocolo,
-  ejercicios,
   formatWeight,
   onRmMedidoChange,
 }: Props) {
   const definicion = DEFINICIONES[protocolo];
 
-  const [ejercicioId, setEjercicioId] = useState<string>("");
+  const [ejercicioNombre, setEjercicioNombre] = useState("");
   const [rmReferencia, setRmReferencia] = useState("");
   const [pasoActivo, setPasoActivo] = useState(0);
   // Indexado por número de paso, no por posición: así aparecer o desaparecer
@@ -171,12 +160,8 @@ export function ProtocoloDirecto({
   const [segundosTotales, setSegundosTotales] = useState(0);
   const [etiquetaTemporizador, setEtiquetaTemporizador] = useState("");
 
-  const ejercicio = useMemo(
-    () => ejercicios.find((item) => String(item.id) === ejercicioId) ?? null,
-    [ejercicioId, ejercicios],
-  );
-
-  const incremento = ejercicio?.incrementoMinimoKg ?? 2.5;
+  const nombreNormalizado = ejercicioNombre.trim();
+  const incremento = 2.5;
   const referencia = toNumber(rmReferencia);
 
   useEffect(() => {
@@ -198,24 +183,6 @@ export function ProtocoloDirecto({
       ...actuales,
       [numero]: { ...(actuales[numero] ?? ESTADO_VACIO), ...cambios },
     }));
-  }
-
-  /**
-   * Cambiar de ejercicio reinicia la ejecución y precarga el RM vigente
-   * (H-06). Mezclar pesos de dos ejercicios distintos produciría un RM sin
-   * sentido físico (ADR-13), así que no se conserva nada.
-   */
-  function seleccionarEjercicio(valor: string) {
-    const nuevo = ejercicios.find((item) => String(item.id) === valor) ?? null;
-
-    setEjercicioId(valor);
-    setEstados({});
-    setPasoActivo(0);
-    setRmReferencia(
-      nuevo?.rmVigenteKg && nuevo.rmVigenteKg > 0
-        ? String(nuevo.rmVigenteKg)
-        : "",
-    );
   }
 
   const pasosBase = definicion.pasos;
@@ -286,8 +253,8 @@ export function ProtocoloDirecto({
     [ejecutados],
   );
   const comparacion = useMemo(
-    () => compararConRmVigente(rmMedido.valorKg, ejercicio?.rmVigenteKg ?? null),
-    [ejercicio?.rmVigenteKg, rmMedido.valorKg],
+    () => compararConRmVigente(rmMedido.valorKg, referencia || null),
+    [referencia, rmMedido.valorKg],
   );
 
   useEffect(() => {
@@ -296,8 +263,7 @@ export function ProtocoloDirecto({
 
   const datosProtocolo = {
     metodo: protocolo,
-    ejercicioId: ejercicio?.id ?? null,
-    ejercicioNombre: ejercicio?.nombre ?? "",
+    ejercicioNombre: nombreNormalizado,
     rmReferencia: referencia,
     rmMedido: rmMedido.valorKg,
     repeticionesMejorIntento: repsMejorIntento,
@@ -338,13 +304,6 @@ export function ProtocoloDirecto({
     setPasoActivo(Math.min(indiceActivo + 1, ejecutados.length - 1));
   }
 
-  const opcionesEjercicio = ejercicios.map((item) => ({
-    value: String(item.id),
-    label: item.rmVigenteKg
-      ? `${item.nombre} · RM vigente ${formatWeight(item.rmVigenteKg)} kg`
-      : `${item.nombre} · sin RM registrado`,
-  }));
-
   return (
     <div className="space-y-5">
       <input
@@ -354,8 +313,8 @@ export function ProtocoloDirecto({
       />
       <input
         type="hidden"
-        name="protocoloEjercicioId"
-        value={ejercicio?.id ?? ""}
+        name="protocoloEjercicioNombre"
+        value={nombreNormalizado}
       />
       <input type="hidden" name="estimatedRM" value={referencia} />
       <input type="hidden" name="finalRM" value={rmMedido.valorKg} />
@@ -378,32 +337,27 @@ export function ProtocoloDirecto({
           <span className="text-sm font-medium text-text-primary dark:text-white">
             Ejercicio evaluado
           </span>
-          <span className="mt-1 block text-xs text-text-tertiary">
+          <span className="mt-1 block text-xs leading-5 text-text-tertiary sm:min-h-10">
             El RM queda registrado para este ejercicio y solo para este.
           </span>
-          <div className="mt-2">
-            <Select
-              options={opcionesEjercicio}
-              value={ejercicioId}
-              onChange={seleccionarEjercicio}
-              placeholder="Selecciona un ejercicio"
-              ariaLabel="Ejercicio evaluado"
-            />
-          </div>
+          <input
+            type="text"
+            value={ejercicioNombre}
+            onChange={(evento) => setEjercicioNombre(evento.target.value)}
+            className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
+            placeholder="Ej. Press banca con barra"
+            maxLength={120}
+            required
+          />
         </label>
 
         <label className="block">
           <span className="text-sm font-medium text-text-primary dark:text-white">
-            RM de referencia (kg)
+            1RM previo de este ejercicio (kg)
           </span>
-          <span className="mt-1 block text-xs text-text-tertiary">
-            {ejercicio?.rmVigenteKg
-              ? `Precargado desde tu RM vigente${
-                  ejercicio.rmVigenteFecha
-                    ? ` del ${ejercicio.rmVigenteFecha}`
-                    : ""
-                }. Puedes ajustarlo.`
-              : "Solo se usa para calcular los pesos de aproximación."}
+          <span className="mt-1 block text-xs leading-5 text-text-tertiary sm:min-h-10">
+            Escríbelo manualmente. Solo se usa para calcular los pesos de
+            aproximación del ejercicio indicado.
           </span>
           <input
             type="number"
@@ -418,14 +372,14 @@ export function ProtocoloDirecto({
         </label>
       </div>
 
-      {!ejercicio || referencia <= 0 ? (
+      {!nombreNormalizado || referencia <= 0 ? (
         <Aviso tono="info">
-          Elige el ejercicio y escribe un RM de referencia para generar los
+          Escribe el ejercicio y su RM previo para generar los
           pesos de cada paso.
         </Aviso>
       ) : null}
 
-      {ejercicio && referencia > 0 && actual ? (
+      {nombreNormalizado && referencia > 0 && actual ? (
         <article className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-subtle">
           <header className="space-y-1">
             <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">
@@ -566,7 +520,7 @@ export function ProtocoloDirecto({
         </article>
       ) : null}
 
-      {ejercicio && referencia > 0 ? (
+      {nombreNormalizado && referencia > 0 ? (
         <div className="space-y-3">
           {rmMedido.valorKg <= 0 ? (
             <Aviso tono="alerta" titulo="Todavía no hay un RM medido">
@@ -625,7 +579,7 @@ export function ProtocoloDirecto({
         </div>
       ) : null}
 
-      {ejercicio && referencia > 0 ? (
+      {nombreNormalizado && referencia > 0 ? (
         <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-bg-main dark:border-white/10 dark:bg-bg-subtle">
           <table className="w-full min-w-[720px] text-left text-sm">
             <caption className="px-4 pt-4 text-left text-xs text-text-tertiary">

@@ -12,14 +12,6 @@ import {
 } from "./estimacion";
 
 describe("estimarRm", () => {
-  it("rmMin <= valor <= rmMax siempre, para un rango amplio de reps", () => {
-    for (const reps of [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 29]) {
-      const { valor, min, max } = estimarRm(100, reps);
-      expect(min).toBeLessThanOrEqual(valor);
-      expect(valor).toBeLessThanOrEqual(max);
-    }
-  });
-
   it("r=40 (o cualquier r >= 30) nunca produce un valor negativo: bloqueo duro", () => {
     const estimacion = estimarRm(100, 40);
     expect(estimacion.valor).toBe(0);

@@ -35,7 +35,7 @@ Consecuencia: casi todos los usuarios se clasifican `advanced` y el peso sugerid
 ```ts
 estimated: Math.max(rm.epley, rm.brzycki)
 ```
-Elegir el máximo de un conjunto de estimadores sesga sistemáticamente al alza. Un estimador debe ser uno definido, con banda de incertidumbre; nunca el máximo.
+Elegir el máximo de un conjunto de estimadores sesga sistemáticamente al alza. El estimador debe ser una fórmula primaria definida; nunca el máximo.
 
 **D-03 · Diferenciación por sexo inexistente** — `lib/rm.ts:168-201`
 `calculateRMFemenino` reimplementa las mismas ocho ecuaciones con los mismos coeficientes que la rama masculina (`0.0333`, `1.0278-0.0278r`, `r^0.1`, `1.013-0.0267123r`, `0.025`, `52.2+41.9e^-0.055r`, `48.8+53.8e^-0.075r`, `0.033`). El `if (normalizedSexo === "femenino")` no cambia ningún resultado. El sexo sí importa (las mujeres suelen completar más repeticiones a un mismo %1RM, sobre todo en tren inferior), pero eso no está modelado.
@@ -113,8 +113,8 @@ Un test sobrescribe la masa corporal del atleta y **borra silenciosamente el `ni
 
 | Dimensión | Hoy | Debería ser |
 |---|---|---|
-| Unidad de RM | Escalar global por sesión | Por (atleta, ejercicio, fecha, método) con incertidumbre |
-| Estimador | `max()` de 8 fórmulas | Fórmula primaria + banda; rango de reps validado |
+| Unidad de RM | Escalar global por sesión | Por (atleta, ejercicio, fecha y método) |
+| Estimador | `max()` de 8 fórmulas | Fórmula primaria; rango de reps validado |
 | Prescripción | Tecleada semana a semana | Generada por motor, editable con trazabilidad del override |
 | Ejecución | No existe | Entidad de primera clase; base de progresión y análisis |
 | Progresión | Manual / banner de 60 días | Reglas por bloque + autorregulación por RIR |
@@ -169,7 +169,7 @@ Alta del atleta
    - ≥ 4 meses y técnica validada → **Casas** o **Nacleiro** (aproximación al RM real).
 3. Para la estimación, el sistema propone una carga inicial derivada del RM previo (o del % de masa corporal si es la primera vez) y **exige que las repeticiones caigan en la ventana válida (3–10)**. Fuera de ventana, propone recalibrar la carga y repetir la serie.
 4. Se registra por ejercicio: carga real usada, peso del equipo, repeticiones, RIR si se conoce, y observaciones.
-5. El sistema calcula el 1RM estimado con la fórmula primaria, muestra la banda de incertidumbre y guarda todas las fórmulas como referencia.
+5. El sistema calcula el 1RM estimado con la fórmula primaria y registra su nivel de confianza.
 6. Cada resultado queda como un **RM por ejercicio con fecha, método y confianza**, y se convierte en el RM vigente de ese ejercicio.
 
 ### 1.5 Flujo de planificación
@@ -272,7 +272,7 @@ El atleta ve la sesión del día con ejercicios, series, repeticiones objetivo, 
 ### M3 · Evaluación (motor de test de RM)
 
 - **Objetivo:** producir estimaciones de 1RM defendibles y trazables por ejercicio.
-- **Funcionalidades:** batería configurable, ramp-up de calibración, estimación submáxima, protocolo Casas, protocolo Nacleiro, validación de rango, banda de incertidumbre, comparación con evaluación anterior.
+- **Funcionalidades:** batería configurable, ramp-up de calibración, estimación submáxima, protocolo Casas, protocolo Nacleiro, validación de rango y comparación con evaluación anterior.
 - **Consume:** M1, M2.
 - **Produce:** `EvaluacionRm` + `ResultadoRm` por ejercicio.
 - **Depende de:** M1, M2.
@@ -383,10 +383,10 @@ Solo entidades con justificación. Se conservan los nombres existentes donde el 
 ### 3.4 `ResultadoRm` (evolución de `ResultadoEjercicio`)
 
 - **Propósito:** el 1RM de **un ejercicio** en **una evaluación**.
-- **Campos:** `evaluacionId`, `ejercicioId`, `cargaKg`, `pesoEquipoKg`, `repeticiones`, `rirReportado` (Int?), `metodo`, `formulaPrimaria` (String), `rm1Estimado` (Float), `rmMin` (Float), `rmMax` (Float), `confianza` (alta | media | baja), `formulas` (Json con las 8), `fueraDeRango` (Boolean).
+- **Campos:** `evaluacionId`, `ejercicioId`, `cargaKg`, `pesoEquipoKg`, `repeticiones`, `rirReportado` (Int?), `metodo`, `formulaPrimaria` (String), `rm1Estimado` (Float), `confianza` (alta | media | baja), `formulas` (Json con las 8), `fueraDeRango` (Boolean).
 - **Relaciones:** ← `EvaluacionRm`, ← `Ejercicio`, → `RmVigente`.
 - **Históricos:** inmutable.
-- **Derivados:** `rm1Estimado`, `rmMin`, `rmMax`, `confianza`.
+- **Derivados:** `rm1Estimado`, `confianza`.
 - **Reglas:** si `repeticiones > 10` ⇒ `fueraDeRango = true` y `confianza = "baja"`; si `> 15`, no se produce estimación utilizable para prescripción.
 - **Validaciones:** `repeticiones ≥ 1`; `cargaKg ≥ 0`; ejercicio `esDeTiempo` no genera `rm1Estimado`.
 - **Migración:** las 8 columnas `epley..baechle` se conservan durante la transición y luego se consolidan en `formulas` Json.
@@ -490,7 +490,7 @@ Tres mecanismos lo garantizan:
 |---|---|---|---|---|---|---|
 | C-01 | `Ejercicio` | + `patron`, `musculoPrimario`, `musculosSecundarios`, `equipamiento`, `incrementoMinimoKg`, `admitePorcentajeRm`, `esDeTiempo`, `esUnilateral`, `enBateriaEvaluacion`, `activo` | D-17: el motor no puede razonar sin semántica | Aditiva + backfill en `prisma/seed.ts` para los 6 ejercicios existentes | Ninguno destructivo | Bajo |
 | C-02 | `Ejercicio` | `id` pasa a `@default(autoincrement())` | Ids hardcodeados impiden ampliar el catálogo | Aditiva (los ids existentes se preservan; ajustar el `AUTO_INCREMENT` inicial) | Ninguno | Bajo |
-| C-03 | `ResultadoEjercicio` | + `rm1Estimado`, `rmMin`, `rmMax`, `confianza`, `formulaPrimaria`, `fueraDeRango`, `rirReportado` | D-02, D-04: estimador único con banda | Aditiva + backfill calculado desde `carga`/`repeticiones` | Backfill recalcula, no borra | Medio — el backfill debe marcar `fueraDeRango` en filas históricas con reps > 10 |
+| C-03 | `ResultadoEjercicio` | + `rm1Estimado`, `confianza`, `formulaPrimaria`, `fueraDeRango`, `rirReportado` | D-02, D-04: estimador único | Aditiva + backfill calculado desde `carga`/`repeticiones` | Backfill recalcula, no borra | Medio — el backfill debe marcar `fueraDeRango` en filas históricas con reps > 10 |
 | C-04 | `Sesion` | `finalRM`/`estimatedRM` marcados **deprecados**; nadie los lee para prescribir | D-01: el RM global no tiene sentido físico | No borrar aún; retirar lectores primero | Se conservan para no romper vistas | Medio — hay que encontrar **todos** los lectores (`dashboard/page.tsx`, `sesion/[id]/page.tsx`, wizard paso 2) |
 | C-05 | **`RmVigente`** | Tabla nueva | D-01, D-16: fuente única y trazable de carga | Nueva + backfill desde el último `ResultadoEjercicio` por (persona, ejercicio) | Solo inserciones | Bajo |
 | C-06 | `MacrocicloMesociclo` | + `objetivoBloque`, `intensidadMin/MaxPct`, `repsMin/Max`, `rirObjetivo`, `seriesSemanalesPorPatron`, `progresion` | D-11, D-13: el motor necesita objetivos de bloque | Aditiva con defaults por `tipo` | Ninguno | Bajo |
@@ -521,7 +521,7 @@ Y el mapa `mesocicloIdPorTipo` (D-09) se reemplaza por indexación **por `orden`
 
 ### 5.1 Principio
 
-Un 1RM es una **estimación con incertidumbre sobre un ejercicio concreto**, no un número global del atleta.
+Un 1RM es una **estimación sobre un ejercicio concreto**, no un número global del atleta.
 
 ### 5.2 Flujo
 
@@ -533,7 +533,7 @@ Seleccionar atleta y batería de ejercicios
    → ¿Reps dentro de la ventana válida (3-10)?
         NO  → ajustar carga (regla de recalibración) y repetir
         SÍ  → estimar 1RM
-   → Guardar ResultadoRm (valor, banda, confianza, linaje)
+   → Guardar ResultadoRm (valor, confianza, linaje)
    → Cerrar evaluación → actualizar RmVigente por ejercicio
 ```
 
@@ -572,8 +572,6 @@ Seleccionar atleta y batería de ejercicios
 1RM = carga × (1 + 0.0333 × r)
 ```
 
-**Banda de incertidumbre:** se calculan las 8 fórmulas existentes y se reportan `min` y `max` como intervalo. **Nunca se usa `max()` como estimador puntual** (corrige D-02).
-
 **Confianza:**
 
 | Condición | Confianza |
@@ -609,9 +607,9 @@ Solo se acepta si `repeticiones + RIR ≤ 10` y `RIR ≤ 3`.
 - Al cerrar la evaluación, por cada ejercicio: cerrar la fila abierta de `RmVigente` y abrir una nueva con `origen`, `resultadoRmId`, `confianza` y `validoDesde = fecha de evaluación`.
 - **Nunca** se actualizan resultados anteriores ni prescripciones ya emitidas.
 
-### 5.8 Incertidumbre, limitaciones y seguridad
+### 5.8 Limitaciones y seguridad
 
-- Las fórmulas predictivas tienen error típico del orden del 5–10% y crecen con las repeticiones; por eso la ventana 3–10 y la banda visible.
+- Las fórmulas predictivas pierden precisión al crecer las repeticiones; por eso se conserva la ventana válida de 3–10.
 - Un 1RM fluctúa día a día (sueño, fatiga, nutrición): el %1RM es una **guía**, no una verdad; por eso el RIR objetivo acompaña siempre a la carga.
 - El protocolo actual con carga = % de masa corporal empuja a repeticiones altas y por tanto a estimaciones malas. **Recomendación explícita:** los coeficientes `porcentajeMasaHombre/Mujer` deben recalibrarse para que el atleta caiga en 3–10 repeticiones, o bien usarse solo como punto de partida de un ramp-up.
 - Seguridad: bloqueo de métodos máximos con < 4 meses; incrementos por escalón limitados; descansos del protocolo Casas ya implementados con temporizador (`CasasProtocol.tsx`), se conservan.
@@ -776,14 +774,6 @@ Un RM con más de 12 semanas se marca `caducado` y genera un aviso de reevaluaci
 - **Por qué esta:** es lineal, sin singularidades (a diferencia de Brzycki y Lander, que se anulan cerca de 37 reps — D-04), coincide con Brzycki alrededor de las 10 repeticiones y se extiende con naturalidad a la variante con RIR (F-03), que es la que cierra el ciclo con el registro de entrenamiento. Ya está implementada y probada en producción (`lib/rm.ts:203-211`).
 - **Fuente:** Epley (1985); revisiones comparativas de ecuaciones predictivas de 1RM.
 
-### F-02 · Banda de incertidumbre multi-fórmula
-- **Objetivo:** comunicar el error de la estimación en vez de fingir precisión.
-- **Inputs:** `carga`, `r`.
-- **Output:** `{ min, max }` sobre las 8 fórmulas ya implementadas.
-- **Rango válido:** el de F-01; fuera de él la banda se ensancha y se marca `fueraDeRango`.
-- **Limitaciones:** es la dispersión entre modelos, no un intervalo de confianza estadístico. Debe etiquetarse así en la interfaz.
-- **Por qué:** el código ya calcula las 8; usarlas como banda aprovecha ese trabajo y **elimina el sesgo de `max()`** (D-02).
-
 ### F-03 · e1RM con RIR
 - **Objetivo:** estimar 1RM desde una serie de entrenamiento sin test dedicado.
 - **Inputs:** `carga`, `repeticiones`, `RIR`.
@@ -874,7 +864,7 @@ lib/**            (dominio puro y testeable: rm, planificación, progresión)
 | Módulo | Responsabilidad |
 |---|---|
 | `lib/rm/formulas.ts` | Las 8 fórmulas + validación de rango (extraído de `lib/rm.ts`) |
-| `lib/rm/estimacion.ts` | Estimador primario, banda, confianza, e1RM con RIR |
+| `lib/rm/estimacion.ts` | Estimador primario, confianza, e1RM con RIR |
 | `lib/rm/protocolos.ts` | Casas y Nacleiro con validación (hoy en componentes cliente) |
 | `lib/rm/vigente.ts` | Resolución del RM vigente, caducidad |
 | `lib/planificacion/plantillas.ts` | Plantillas de periodización por objetivo |
@@ -945,7 +935,7 @@ Introducir un validador de esquemas compartido (Zod o equivalente) para las entr
 
 #### P-03 · Evaluación de RM (evolución de `app/nueva-sesion/**`)
 - **Objetivo:** ejecutar el test con seguridad y calidad de dato.
-- **Muestra:** ejercicio actual, carga propuesta, ventana de repeticiones válida, temporizador de descanso (ya existe), resultado con banda de incertidumbre y comparación con la evaluación anterior.
+- **Muestra:** ejercicio actual, carga propuesta, ventana de repeticiones válida, temporizador de descanso, resultado y comparación con la evaluación anterior.
 - **Validaciones visibles:** aviso inmediato si las repeticiones caen fuera de 3–10, con propuesta de recalibrar la carga.
 - **Errores:** protocolo Casas incompleto → no se puede cerrar (corrige D-05).
 
@@ -987,7 +977,7 @@ Introducir un validador de esquemas compartido (Zod o equivalente) para las entr
 | `app/nueva-sesion/NuevaSesionForm.tsx` | **Se modifica:** validación de rango y carga propuesta por ejercicio |
 | `app/nueva-sesion/CasasProtocol.tsx` | **Se modifica:** exigir pesos reales; RM de referencia desde `RmVigente` |
 | `app/nueva-sesion/NacleiroTable.tsx` | **Se modifica:** validar `series > 1`, redondear al incremento del ejercicio |
-| `app/sesion/[id]/page.tsx` | **Se modifica:** resultados por ejercicio con banda; se elimina el RM global |
+| `app/sesion/[id]/page.tsx` | **Se modifica:** resultados por ejercicio; se elimina el RM global |
 | `app/macrociclo/[id]/MacrocicloWizard.tsx` (9 pasos) | **Se combina:** pasos 4–8 → generador (P-04). Quedan 4 pasos: objetivo, evaluación, disponibilidad, revisión |
 | `app/macrociclo/[id]/wizard-steps.tsx` (1580 líneas) | **Se divide** en componentes por paso y se reduce a editor de excepciones |
 | `components/macrociclo/MesocicloCargaEditor.tsx` | **Se mantiene** como vista avanzada opcional (presupuesto de tiempo por direcciones) |
@@ -1084,7 +1074,7 @@ Sesiones con RM global, macrociclos con prescripción manual, sin ejecución, co
 - **Backend:** eliminar `Math.max` entre ejercicios (D-01) y entre fórmulas (D-02); validar rango de repeticiones (D-04); exigir pesos reales en Casas (D-05); validar `series > 1` en Nacleiro (D-06); dejar de borrar `nivelOverride` al guardar una sesión (D-15); sustituir `deleteMany` por diff en `guardarPeriodizacion` (D-08); indexar mesociclos por `orden` (D-09); reemplazar `distribuirSemanas` por el mayor resto (D-10).
 - **Frontend:** avisos de rango en el formulario de sesión; bloqueo del cierre de Casas incompleto.
 - **Base de datos:** ninguno.
-- **Algoritmos:** F-01, F-02, F-08.
+- **Algoritmos:** F-01, F-08.
 - **Tests:** unitarios de todas las fórmulas, incluidos los casos de singularidad; unitarios del reparto de semanas.
 - **Dependencias:** ninguna. **Se puede empezar hoy.**
 - **Riesgos:** cambiar el estimador altera los valores mostrados respecto a los históricos → se anota en la interfaz.
@@ -1116,15 +1106,15 @@ Sesiones con RM global, macrociclos con prescripción manual, sin ejecución, co
 
 ### FASE 3 — Motor de evaluación
 
-**Objetivo:** evaluaciones de calidad, con incertidumbre explícita.
+**Objetivo:** evaluaciones de calidad, con confianza explícita.
 
 - **Backend:** `lib/rm/protocolos.ts` (Casas y Nacleiro salen del cliente); `crearEvaluacionRmAction`, `registrarResultadoRmAction`, `cerrarEvaluacionRmAction`.
-- **Frontend:** P-03 con carga propuesta, ventana de repeticiones y banda de resultado.
+- **Frontend:** P-03 con carga propuesta, ventana de repeticiones y confianza del resultado.
 - **BD:** ninguno adicional.
 - **Tests:** unitarios de protocolos; e2e del flujo completo de evaluación.
 - **Dependencias:** Fase 2.
 - **Riesgos:** mover el cálculo de protocolos al servidor cambia la interactividad → mantener previsualización en cliente + cálculo en servidor.
-- **Aceptación:** ninguna estimación fuera de rango se usa para prescribir; toda estimación muestra su banda.
+- **Aceptación:** ninguna estimación fuera de rango se usa para prescribir; toda estimación muestra su confianza.
 
 ### FASE 4 — Motor de planificación
 
@@ -1208,7 +1198,7 @@ BLOQUE A — Red de seguridad (sin esto no se puede verificar nada)
 
 BLOQUE B — Corrección de cálculo (usa los tests del bloque A como red)
   5. Añadir validación de rango de repeticiones en lib/rm/formulas.ts
-  6. Crear lib/rm/estimacion.ts: estimador primario (Epley) + banda + confianza
+  6. Crear lib/rm/estimacion.ts: estimador primario (Epley) + confianza
   7. Eliminar la rama de sexo duplicada de lib/rm.ts (D-03), documentando la decisión
   8. Modificar actions/sesion.ts: quitar Math.max entre ejercicios y entre fórmulas
   9. Modificar actions/sesion.ts: no borrar nivelOverride ni pisar masaCorporal sin aviso
@@ -1233,7 +1223,7 @@ BLOQUE D — Catálogo de ejercicios
 
 BLOQUE E — RM por ejercicio y RM vigente
  24. Migración: campos nuevos de ResultadoEjercicio (C-03)
- 25. Backfill: calcular rm1Estimado, banda, confianza y fueraDeRango en filas históricas
+ 25. Backfill: calcular rm1Estimado, confianza y fueraDeRango en filas históricas
  26. Migración: tabla RmVigente (C-05)
  27. Backfill de RmVigente desde el último resultado por (persona, ejercicio)
  28. Crear lib/rm/vigente.ts (resolución + caducidad R-15)
@@ -1403,7 +1393,7 @@ Sustituir `EXERCISES_WITHOUT_LOAD` por `Ejercicio.esDeTiempo` en todos sus usos.
 Migración C-03 y backfill de las filas históricas.
 *Archivos:* `prisma/schema.prisma`, migración, `prisma/backfill-resultados.ts` (nuevo).
 *Dependencias:* TASK-004. *Prioridad:* Crítica. *Complejidad:* L.
-*Aceptación:* toda fila histórica tiene `rm1Estimado`, banda y confianza; las de reps > 10 quedan `fueraDeRango`.
+*Aceptación:* toda fila histórica tiene `rm1Estimado` y confianza; las de reps > 10 quedan `fueraDeRango`.
 
 **TASK-019 · Tabla `RmVigente`**
 Migración C-05 + índices.
@@ -1614,7 +1604,6 @@ Hoy no hay ninguna prueba (`package.json` no define `test`). Todo lo que sigue e
 - Idempotencia del redondeo a dos decimales.
 
 **Estimación (`lib/rm/estimacion.test.ts`)**
-- `rmMin ≤ valor ≤ rmMax` siempre.
 - `confianza` correcta en cada banda de repeticiones.
 - `fueraDeRango` con `r > 10`; rechazo con `r ≥ 30`.
 - e1RM con RIR: `carga 100, r 5, RIR 2` equivale a `carga 100, r 7, RIR 0`.
@@ -1658,7 +1647,7 @@ Hoy no hay ninguna prueba (`package.json` no define `test`). Todo lo que sigue e
 
 ### 16.3 End-to-end
 
-1. **Alta y evaluación:** crear atleta → evaluación de 5 ejercicios → ver RM vigentes con banda.
+1. **Alta y evaluación:** crear atleta → evaluación de 5 ejercicios → ver RM vigentes.
 2. **Planificación:** objetivo y disponibilidad → generar → ajustar una semana → publicar → ver el plan.
 3. **Ejecución:** abrir la sesión del día → registrar todas las series → ver la sesión completada y el e1RM.
 4. **Ciclo completo:** ejecutar 3 semanas → reevaluar → regenerar → **comprobar que las semanas ejecutadas no cambiaron**.
@@ -1711,7 +1700,7 @@ Hoy no hay ninguna prueba (`package.json` no define `test`). Todo lo que sigue e
 - **AC-07.** Ninguna fórmula produce valores negativos, infinitos ni cero por repeticiones altas.
 - **AC-08.** Ningún RM se registra sin que el atleta haya levantado realmente esa carga o una serie submáxima real.
 - **AC-09.** Ningún RM de un ejercicio se usa para prescribir otro ejercicio.
-- **AC-10.** Toda estimación se presenta con su banda de incertidumbre y su nivel de confianza.
+- **AC-10.** Toda estimación se presenta con su nivel de confianza.
 - **AC-11.** El nivel del atleta nunca se deriva del máximo entre ejercicios distintos.
 
 ### 17.3 Coherencia deportiva
@@ -1756,7 +1745,6 @@ Además, cada constante numérica del dominio debe vivir en `lib/config/parametr
 | # | Decisión a documentar | Dónde |
 |---|---|---|
 | ADR-01 | Fórmula primaria para estimar 1RM (Epley) y por qué, no las otras siete | `docs/DECISIONES.md` + `lib/rm/estimacion.ts` |
-| ADR-02 | Por qué no se usa `max()` entre fórmulas y qué significa la banda | Ídem |
 | ADR-03 | Ventana válida de repeticiones (3–10) y qué pasa fuera de ella | Ídem |
 | ADR-04 | Significado operativo de RIR en este sistema y su escala | `docs/DECISIONES.md` |
 | ADR-05 | Significado de RPE de sesión y por qué se registra aparte del RIR | Ídem |

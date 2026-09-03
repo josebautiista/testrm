@@ -6,11 +6,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { calculateRM, calculateRMForSession, roundToTwo } from "@/lib/rm";
-import {
-  calculateEpley,
-  getMaxFormulaRM,
-  getMinFormulaRM,
-} from "@/lib/rm/formulas";
+import { calculateEpley } from "@/lib/rm/formulas";
 import { estimarRm } from "@/lib/rm/estimacion";
 import { actualizarRmVigente } from "@/services/rm.service";
 import type { OrigenRmVigente } from "@/lib/rm/vigente";
@@ -43,8 +39,10 @@ type CreateSesionInput = {
   finalRM: number;
   protocolData: Prisma.InputJsonValue | null;
   ejercicios: ResultadoInput[];
-  /** Ejercicio sobre el que se corrió un protocolo directo (Casas/Naclerio). */
-  protocoloEjercicioId: number | null;
+  /** Nombre libre del ejercicio sobre el que se corrió el protocolo directo. */
+  protocoloEjercicioNombre?: string | null;
+  /** Compatibilidad con llamadas internas anteriores que ya referencian catálogo. */
+  protocoloEjercicioId?: number | null;
   /** Repeticiones del mejor intento válido del protocolo. */
   protocoloRepeticiones: number;
   macrocicloId?: number | null;
@@ -232,12 +230,11 @@ function parseCreateSesionInput(
     };
   }
 
-  const rawProtocoloEjercicioId = formData.get("protocoloEjercicioId");
-  const protocoloEjercicioId =
-    typeof rawProtocoloEjercicioId === "string" &&
-    rawProtocoloEjercicioId.trim() !== ""
-      ? Number(rawProtocoloEjercicioId.trim())
-      : null;
+  const rawProtocoloEjercicioNombre = formData.get("protocoloEjercicioNombre");
+  const protocoloEjercicioNombre =
+    typeof rawProtocoloEjercicioNombre === "string"
+      ? rawProtocoloEjercicioNombre.trim().slice(0, 120)
+      : "";
   const protocoloRepeticiones = parseNonNegativeInt(
     formData.get("protocoloRepeticiones"),
   );
@@ -255,13 +252,11 @@ function parseCreateSesionInput(
   // RmVigente y el test quedaría sin efecto sobre la planificación.
   if (
     rmMethod !== "estimation" &&
-    (!protocoloEjercicioId ||
-      !Number.isInteger(protocoloEjercicioId) ||
-      protocoloEjercicioId <= 0)
+    !protocoloEjercicioNombre
   ) {
     return {
       ok: false,
-      error: "Selecciona el ejercicio sobre el que hiciste el protocolo.",
+      error: "Escribe el ejercicio sobre el que hiciste el protocolo.",
       cc,
     };
   }
@@ -278,8 +273,9 @@ function parseCreateSesionInput(
       finalRM,
       protocolData,
       ejercicios: resultados,
-      protocoloEjercicioId:
-        rmMethod === "estimation" ? null : protocoloEjercicioId,
+      protocoloEjercicioNombre:
+        rmMethod === "estimation" ? null : protocoloEjercicioNombre,
+      protocoloEjercicioId: null,
       protocoloRepeticiones,
       macrocicloId: macrocicloId && Number.isInteger(macrocicloId) && macrocicloId > 0 ? macrocicloId : null,
       returnTo,
@@ -420,6 +416,40 @@ export async function createSesion(
 
       const esProtocoloDirecto = rmMethod !== "estimation";
 
+      // El nombre libre no se publica en el catálogo. Se conserva en una
+      // fila técnica inactiva para mantener las relaciones históricas con
+      // ResultadoEjercicio, RmVigente y la planificación.
+      const ejercicioProtocolo =
+        esProtocoloDirecto && input.protocoloEjercicioNombre
+          ? (await tx.ejercicio.findFirst({
+              where: {
+                nombre: input.protocoloEjercicioNombre,
+                esEjercicioLibre: true,
+              },
+            })) ??
+            (await tx.ejercicio.create({
+              data: {
+                nombre: input.protocoloEjercicioNombre,
+                porcentajeMasaHombre: 0,
+                porcentajeMasaMujer: 0,
+                patron: "accesorio",
+                musculoPrimario: "",
+                equipamiento: "otro",
+                incrementoMinimoKg: 2.5,
+                admitePorcentajeRm: true,
+                esDeTiempo: false,
+                esUnilateral: false,
+                enBateriaEvaluacion: false,
+                activo: false,
+                esEjercicioLibre: true,
+              },
+            }))
+          : esProtocoloDirecto && input.protocoloEjercicioId
+            ? await tx.ejercicio.findUnique({
+                where: { id: input.protocoloEjercicioId },
+              })
+            : null;
+
       const resultadosEstimacion = sanitizedEjercicios
         .filter((item) => ejerciciosPermitidos.has(item.ejercicioId))
         .map((item) => {
@@ -429,8 +459,8 @@ export async function createSesion(
           const pesoEquipo = withoutLoad ? 0 : item.pesoEquipo;
           const carga = withoutLoad ? 0 : pesoLevantado + pesoEquipo;
           const formula = calculateRM(carga, item.repeticiones, persona.sexo);
-          // C-03/M4: estimador único con banda e incertidumbre, guardado
-          // junto a las 8 fórmulas de referencia. withoutLoad (esDeTiempo)
+          // C-03/M4: estimador puntual único con confianza explícita.
+          // withoutLoad (esDeTiempo)
           // no produce un RM utilizable (D-17/esDeTiempo).
           //
           // ADR-27: el RIR reportado entra en la estimación. Una serie con
@@ -459,8 +489,6 @@ export async function createSesion(
             casas: 0,
             nacleiro: 0,
             rm1Estimado: estimacion ? roundToTwo(estimacion.valor) : null,
-            rmMin: estimacion ? roundToTwo(estimacion.min) : null,
-            rmMax: estimacion ? roundToTwo(estimacion.max) : null,
             confianza: estimacion?.confianza ?? null,
             formulaPrimaria: estimacion ? "epley" : null,
             fueraDeRango: estimacion?.fueraDeRango ?? false,
@@ -474,15 +502,8 @@ export async function createSesion(
       // por el método más preciso moría en `Sesion.finalRM` y la
       // planificación seguía usando la estimación.
       const resultadoProtocolo = (() => {
-        if (!esProtocoloDirecto || !input.protocoloEjercicioId) {
+        if (!esProtocoloDirecto || !ejercicioProtocolo) {
           return null;
-        }
-
-        const ejercicioValido = ejerciciosDB.some(
-          (ejercicio) => ejercicio.id === input.protocoloEjercicioId,
-        );
-        if (!ejercicioValido) {
-          throw new Error("Ejercicio del protocolo no encontrado.");
         }
 
         const cargaMedida = input.finalRM;
@@ -506,7 +527,7 @@ export async function createSesion(
             : calculateEpley(cargaMedida, repeticiones);
 
         return {
-          ejercicioId: input.protocoloEjercicioId,
+          ejercicioId: ejercicioProtocolo.id,
           repeticiones,
           carga: roundToTwo(cargaMedida),
           pesoEquipo: 0,
@@ -521,12 +542,6 @@ export async function createSesion(
           casas: roundToTwo(rmMethod === "casas" ? rmMedido : 0),
           nacleiro: roundToTwo(rmMethod === "naclerio" ? rmMedido : 0),
           rm1Estimado: roundToTwo(rmMedido),
-          rmMin: roundToTwo(
-            repeticiones <= 1 ? cargaMedida : getMinFormulaRM(formula),
-          ),
-          rmMax: roundToTwo(
-            repeticiones <= 1 ? cargaMedida : getMaxFormulaRM(formula),
-          ),
           // Un peso levantado y verificado es el dato de mayor calidad que
           // puede entrar al sistema.
           confianza: "alta",

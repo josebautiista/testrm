@@ -82,7 +82,7 @@ export default async function PersonaDetailPage({
                 className="space-y-3 rounded-xl border border-gray-200 bg-bg-main p-4 dark:border-white/8"
               >
                 <p className="text-sm text-text-secondary">
-                  Sesion #{sesion.id} - {formatDateTime(sesion.createdAt)}
+                  Sesión del {formatDateTime(sesion.createdAt)}
                 </p>
 
                 <Table

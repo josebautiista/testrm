@@ -46,6 +46,15 @@ Este repositorio es una aplicación web construida con **Next.js 16 (App Router)
 - Para cambios en la lógica de autenticación o datos, revisa `lib/auth.ts`, `actions/`, y `app/api/`.
 - Antes de tocar `lib/rm/**`, `lib/planificacion/**`, `lib/progresion/**` o `lib/config/parametros.ts`, lee `docs/DECISIONES.md` (por qué cada regla/constante es como es) y `docs/PLAN-MAESTRO.md` (plan maestro y orden de tareas de la reescritura en curso).
 
+## Norma obligatoria para migraciones SQL
+
+- Referencia: commit `2bb0f845309e0002cf9ced2ce4a816e714772784`, que corrigió nombres de tablas en minúsculas para evitar errores de migración en el despliegue de Vercel.
+- Toda migración en `prisma/migrations/**/migration.sql` debe respetar exactamente las mayúsculas y minúsculas del nombre físico de cada tabla definido por `prisma/schema.prisma`: el nombre del modelo, salvo que exista un `@@map` explícito. Ejemplos actuales: `Persona`, `Ejercicio`, `ResultadoEjercicio`, `Macrociclo`, `RmVigente`, `SerieRealizada` y `User`. No usar `persona`, `ejercicio`, `resultadoejercicio`, etc.
+- Esta regla aplica a todas las referencias SQL: `CREATE/ALTER/DROP TABLE`, `REFERENCES`, tablas de índices (`ON`), consultas y modificaciones de datos. Respetar también los nombres exactos de columnas, índices y restricciones existentes.
+- Revisar siempre el SQL generado antes de aplicarlo o entregarlo; no asumir que Prisma en Windows conserva la capitalización correcta. Una ejecución local exitosa no prueba compatibilidad con un servidor MySQL/MariaDB sensible a mayúsculas.
+- Antes de entregar una migración, contrastar sus identificadores con el esquema y las migraciones que crearon las tablas. Cuando se pruebe el historial completo, usar una base desechable con sensibilidad a mayúsculas; nunca resetear producción para validarlo.
+- No reescribir migraciones ya aplicadas sin coordinación explícita: Prisma registra sus checksums. El commit de referencia documenta una corrección histórica, no una autorización para editar libremente el historial.
+
 ## Sistema de colores y estilos (Tailwind CSS 4)
 
 ### Paleta de colores

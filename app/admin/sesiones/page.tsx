@@ -38,19 +38,16 @@ export default async function AdminSesionesPage({
   return (
     <Card title="Sesiones" subtitle={`Total: ${total}`}>
       <Table
-        headers={["Sesion", "Persona", "Fecha", "Cantidad ejercicios"]}
+        headers={["Fecha de la sesión", "Persona", "Cantidad ejercicios"]}
         hasRows={sesiones.length > 0}
       >
         {sesiones.map((sesion) => (
           <tr key={sesion.id}>
             <td className="px-4 py-3 text-text-primary dark:text-white">
-              #{sesion.id}
+              {formatDateTime(sesion.createdAt)}
             </td>
             <td className="px-4 py-3 text-text-secondary">
               {sesion.persona.nombre}
-            </td>
-            <td className="px-4 py-3 text-text-secondary">
-              {formatDateTime(sesion.createdAt)}
             </td>
             <td className="px-4 py-3 text-text-secondary">
               {sesion.resultados.length}

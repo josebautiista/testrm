@@ -1,4 +1,4 @@
-// TASK-018 · Backfill de ResultadoEjercicio.{rm1Estimado,rmMin,rmMax,
+// TASK-018 · Backfill de ResultadoEjercicio.{rm1Estimado,
 // confianza,formulaPrimaria,fueraDeRango} para filas históricas creadas
 // antes de C-03. No reinterpreta valores viejos (§4.2 "Migración: aditiva +
 // backfill calculado desde carga/repeticiones"): deriva el estimador desde
@@ -64,8 +64,6 @@ async function main() {
         where: { id: resultado.id },
         data: {
           rm1Estimado: estimacion.noUtilizable ? null : estimacion.valor,
-          rmMin: estimacion.noUtilizable ? null : estimacion.min,
-          rmMax: estimacion.noUtilizable ? null : estimacion.max,
           confianza: estimacion.confianza,
           formulaPrimaria: "epley",
           fueraDeRango: estimacion.fueraDeRango,

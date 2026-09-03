@@ -48,7 +48,6 @@ function toValidInputs(carga: number, reps: number) {
     reps,
   };
 }
-
 function safeDivide(numerator: number, denominator: number) {
   if (
     !Number.isFinite(numerator) ||
@@ -188,30 +187,4 @@ export function calculateRM(
     wathen: calculateWathen(carga, reps),
     baechle: calculateBaechle(carga, reps),
   };
-}
-
-export function getMaxFormulaRM(result: RMResult): number {
-  return Math.max(
-    result.epley,
-    result.brzycki,
-    result.lombardi,
-    result.lander,
-    result.oconnor,
-    result.mayhew,
-    result.wathen,
-    result.baechle,
-  );
-}
-
-export function getMinFormulaRM(result: RMResult): number {
-  return Math.min(
-    result.epley,
-    result.brzycki,
-    result.lombardi,
-    result.lander,
-    result.oconnor,
-    result.mayhew,
-    result.wathen,
-    result.baechle,
-  );
 }

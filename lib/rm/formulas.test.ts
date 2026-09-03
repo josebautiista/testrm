@@ -10,8 +10,6 @@ import {
   calculateOconnor,
   calculateRM,
   calculateWathen,
-  getMaxFormulaRM,
-  getMinFormulaRM,
   roundToTwo,
 } from "./formulas";
 
@@ -141,14 +139,4 @@ describe("calculateRM — conjunto de 8 fórmulas", () => {
     expect(femenino).toEqual(masculino);
   });
 
-  it("getMaxFormulaRM/getMinFormulaRM delimitan la banda de incertidumbre", () => {
-    const result = calculateRM(100, 5);
-    const max = getMaxFormulaRM(result);
-    const min = getMinFormulaRM(result);
-    expect(min).toBeLessThanOrEqual(max);
-    for (const value of Object.values(result)) {
-      expect(value).toBeGreaterThanOrEqual(min);
-      expect(value).toBeLessThanOrEqual(max);
-    }
-  });
 });

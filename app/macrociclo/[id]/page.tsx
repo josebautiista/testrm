@@ -276,7 +276,13 @@ export default async function MacrocicloDetallePage({
           <div>
             <p className="text-sm text-text-secondary">Sesión RM</p>
             <p className="font-medium text-text-primary dark:text-white">
-              {macrociclo.sesionRmId ? `#${macrociclo.sesionRmId}` : "Sin asignar"}
+              {macrociclo.sesionRm
+                ? new Intl.DateTimeFormat("es-CO", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  }).format(macrociclo.sesionRm.createdAt)
+                : "Sin asignar"}
             </p>
           </div>
           <div>

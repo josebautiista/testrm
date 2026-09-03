@@ -67,6 +67,9 @@ model Ejercicio {
   esUnilateral         Boolean @default(false)
   enBateriaEvaluacion  Boolean @default(true)
   activo               Boolean @default(true)
+  // Los protocolos directos admiten nombres libres. Estas filas preservan
+  // la relación histórica/RM sin publicar el ejercicio en el catálogo.
+  esEjercicioLibre     Boolean @default(false)
 
   resultados                  ResultadoEjercicio[]
   macrocicloSemanaEjercicios  MacrocicloSemanaEjercicio[]
@@ -76,6 +79,7 @@ model Ejercicio {
 
   @@index([nombre])
   @@index([patron])
+  @@index([esEjercicioLibre, nombre])
 }
 
 model Sesion {
@@ -117,11 +121,8 @@ model ResultadoEjercicio {
   casas    Float
   nacleiro Float
 
-  // C-03/TASK-018: estimador único con banda e incertidumbre explícita
-  // (corrige D-02/D-04) en vez de max() entre las 8 fórmulas.
+  // C-03/TASK-018: estimador puntual único con confianza explícita.
   rm1Estimado     Float?
-  rmMin           Float?
-  rmMax           Float?
   confianza       String? // alta|media|baja
   formulaPrimaria String? // p.ej. "epley"
   fueraDeRango    Boolean @default(false)

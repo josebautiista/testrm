@@ -143,7 +143,7 @@ const FEATURES = [
   {
     icon: IconGauge,
     title: "1RM con 8 fórmulas",
-    desc: "Epley, Brzycki, Lombardi y más — cada estimación con su banda de confianza, no un número suelto.",
+    desc: "Epley como fórmula principal, acompañada por un nivel de confianza según la calidad del intento.",
   },
   {
     icon: IconCalendar,

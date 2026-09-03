@@ -1,6 +1,6 @@
-// Estimador primario de 1RM, banda de incertidumbre y nivel de confianza.
+// Estimador primario de 1RM y nivel de confianza.
 // Corrige D-02 (§0.2 PLAN-MAESTRO.md): nunca se usa max() entre fórmulas
-// como estimador puntual. Ver F-01, F-02 y ADR-01/ADR-02/ADR-03.
+// como estimador puntual. Ver F-01, ADR-01 y ADR-03.
 //
 // ADR-27: el RIR reportado corrige la estimación puntual. Una serie con
 // repeticiones en reserva no es una serie al fallo: 8 repeticiones con 3 RIR
@@ -13,21 +13,13 @@
 // [1,10] de ADR-03 — es la que guía al atleta a repetir el intento con otra
 // carga en vez de aceptar una estimación pobre.
 
-import {
-  calculateEpley,
-  calculateRM,
-  getMaxFormulaRM,
-  getMinFormulaRM,
-} from "@/lib/rm/formulas";
+import { calculateEpley } from "@/lib/rm/formulas";
 
 export type ConfianzaRM = "alta" | "media" | "baja";
 
 export type EstimacionRM = {
   /** Estimación puntual (fórmula primaria: Epley). */
   valor: number;
-  /** Banda de incertidumbre entre las 8 fórmulas (F-02). No es un intervalo estadístico. */
-  min: number;
-  max: number;
   confianza: ConfianzaRM;
   /** true si las repeticiones caen fuera de la ventana válida [1,10]. */
   fueraDeRango: boolean;
@@ -91,8 +83,6 @@ export function estimarRm(
   ) {
     return {
       valor: 0,
-      min: 0,
-      max: 0,
       confianza: "baja",
       fueraDeRango: true,
       noUtilizable: true,
@@ -110,8 +100,6 @@ export function estimarRm(
   if (repeticionesEfectivas >= REPETICIONES_BLOQUEO_DURO) {
     return {
       valor: 0,
-      min: 0,
-      max: 0,
       confianza: "baja",
       fueraDeRango: true,
       noUtilizable: true,
@@ -120,9 +108,6 @@ export function estimarRm(
   }
 
   const valor = calculateEpley(carga, repeticionesEfectivas);
-  const todas = calculateRM(carga, repeticionesEfectivas, opciones.sexo);
-  const min = getMinFormulaRM(todas);
-  const max = getMaxFormulaRM(todas);
 
   const fueraDeRango =
     repeticionesEfectivas < REPETICIONES_VENTANA_VALIDA.min ||
@@ -137,8 +122,6 @@ export function estimarRm(
 
   return {
     valor,
-    min,
-    max,
     confianza,
     fueraDeRango,
     noUtilizable,

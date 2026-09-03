@@ -104,19 +104,16 @@ export default async function AdminPage() {
           }
         >
           <Table
-            headers={["Sesion", "Persona", "Fecha", "Ejercicios"]}
+            headers={["Fecha de la sesión", "Persona", "Ejercicios"]}
             hasRows={latestSesiones.length > 0}
           >
             {latestSesiones.map((sesion) => (
               <tr key={sesion.id}>
                 <td className="px-4 py-3 text-text-primary dark:text-white">
-                  #{sesion.id}
+                  {formatDateTime(sesion.createdAt)}
                 </td>
                 <td className="px-4 py-3 text-text-secondary">
                   {sesion.persona.nombre}
-                </td>
-                <td className="px-4 py-3 text-text-secondary">
-                  {formatDateTime(sesion.createdAt)}
                 </td>
                 <td className="px-4 py-3 text-text-secondary">
                   {sesion.resultados.length}

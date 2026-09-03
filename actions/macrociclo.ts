@@ -42,6 +42,7 @@ import {
   PERFIL_POR_DEFECTO,
 } from "@/lib/planificacion/perfil";
 import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
+import { combinarResultadosRmMasRecientes } from "@/lib/macrociclo-rm";
 
 function getContext() {
   return { userType: "persona" as const };
@@ -294,15 +295,21 @@ export async function guardarMedidasAction(formData: FormData) {
 export async function guardarRmAction(formData: FormData) {
   const cc = getString(formData, "cc");
   const id = getInt(formData, "id");
-  const sesionRmId = getInt(formData, "sesionRmId");
+  const sesionRmIds = [...new Set(
+    formData
+      .getAll("sesionRmIds")
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0),
+  )];
 
-  if (!cc || !id || !sesionRmId) redirect("/atletas");
+  if (!cc || !id || sesionRmIds.length === 0) redirect("/atletas");
 
   const persona = await getPersona(cc);
   if (!persona) redirect("/atletas");
 
-  const sesion = await prisma.sesion.findFirst({
-    where: { id: sesionRmId, personaId: persona.id },
+  const sesiones = await prisma.sesion.findMany({
+    where: { id: { in: sesionRmIds }, personaId: persona.id },
+    orderBy: { createdAt: "desc" },
     include: {
       resultados: {
         include: {
@@ -312,31 +319,47 @@ export async function guardarRmAction(formData: FormData) {
     },
   });
 
-  if (!sesion) redirectToWizard(cc, id, PASO_WIZARD.rm);
+  if (sesiones.length !== sesionRmIds.length) {
+    redirectToWizard(cc, id, PASO_WIZARD.rm);
+  }
+
+  const resultadosRecientes = combinarResultadosRmMasRecientes(sesiones);
+
+  const serializarResultado = (
+    r: (typeof sesiones)[number]["resultados"][number],
+  ) => ({
+    ejercicioId: r.ejercicioId,
+    ejercicioNombre: r.ejercicio.nombre,
+    ejercicio: { nombre: r.ejercicio.nombre },
+    repeticiones: r.repeticiones,
+    carga: r.carga,
+    epley: r.epley,
+    brzycki: r.brzycki,
+    lombardi: r.lombardi,
+    lander: r.lander,
+    oconnor: r.oconnor,
+    mayhew: r.mayhew,
+    wathen: r.wathen,
+    baechle: r.baechle,
+    casas: r.casas,
+    nacleiro: r.nacleiro,
+  });
 
   const rmSnapshot = {
-    sesionId: sesion.id,
-    peso: sesion.peso,
-    rmMethod: sesion.rmMethod,
-    estimatedRM: sesion.estimatedRM,
-    finalRM: sesion.finalRM,
-    protocolData: sesion.protocolData,
-    resultados: sesion.resultados.map((r) => ({
-      ejercicioId: r.ejercicioId,
-      ejercicioNombre: r.ejercicio.nombre,
-      repeticiones: r.repeticiones,
-      carga: r.carga,
-      epley: r.epley,
-      brzycki: r.brzycki,
-      lombardi: r.lombardi,
-      lander: r.lander,
-      oconnor: r.oconnor,
-      mayhew: r.mayhew,
-      wathen: r.wathen,
-      baechle: r.baechle,
-      casas: r.casas,
-      nacleiro: r.nacleiro,
+    sesionIds: sesiones.map((sesion) => sesion.id),
+    sesiones: sesiones.map((sesion) => ({
+      sesionId: sesion.id,
+      fecha: sesion.createdAt.toISOString(),
+      peso: sesion.peso,
+      rmMethod: sesion.rmMethod,
+      estimatedRM: sesion.estimatedRM,
+      finalRM: sesion.finalRM,
+      protocolData: sesion.protocolData,
+      resultados: sesion.resultados.map(serializarResultado),
     })),
+    // Al estar ordenadas de más reciente a más antigua, el primer resultado
+    // de cada ejercicio es el que manda cuando hay duplicados.
+    resultados: resultadosRecientes.map(serializarResultado),
   };
 
   const macrociclo = await prisma.macrociclo.findUnique({
@@ -347,7 +370,8 @@ export async function guardarRmAction(formData: FormData) {
   await guardarRmSnapshot({
     id,
     personaId: persona.id,
-    sesionRmId,
+    sesionRmId: sesiones[0].id,
+    sesionRmIds: sesiones.map((sesion) => sesion.id),
     rmSnapshot,
     pasoActual: macrociclo.pasoActual,
     context: getContext(),

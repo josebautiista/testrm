@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { AppDialog } from "@/components/ui/AppDialog";
 import { MesocicloCargaEditor } from "@/components/macrociclo/MesocicloCargaEditor";
 import {
   type ObjetivoTipo,
@@ -80,35 +81,70 @@ export function PasoRm({
   cc,
   macrocicloId,
   sesionesRm,
-  sesionRmId,
-  setSesionRmId,
+  sesionRmIds,
+  setSesionRmIds,
   objetivoTipo,
 }: {
   cc: string;
   macrocicloId: number;
   sesionesRm: SesionRm[];
-  sesionRmId: number | "";
-  setSesionRmId: (value: number | "") => void;
+  sesionRmIds: number[];
+  setSesionRmIds: (value: number[]) => void;
   objetivoTipo: ObjetivoTipo;
 }) {
   const sugerida = sesionesRm[0];
-  const sesionSeleccionada = sesionesRm.find((s) => s.id === sesionRmId);
   const mostrarAvisoCompetencia =
     objetivoTipo === "competencia" &&
-    sesionSeleccionada?.rmMethod === "estimation";
+    sesionesRm.some(
+      (sesion) =>
+        sesionRmIds.includes(sesion.id) && sesion.rmMethod === "estimation",
+    );
+
+  function esDirecta(sesion: SesionRm) {
+    return ["casas", "naclerio", "nacleiro"].includes(sesion.rmMethod);
+  }
+
+  function alternarSesion(sesion: SesionRm) {
+    if (!esDirecta(sesion)) {
+      setSesionRmIds([sesion.id]);
+      return;
+    }
+
+    const directasSeleccionadas = sesionesRm
+      .filter((item) => sesionRmIds.includes(item.id) && esDirecta(item))
+      .map((item) => item.id);
+    setSesionRmIds(
+      directasSeleccionadas.includes(sesion.id)
+        ? directasSeleccionadas.filter((id) => id !== sesion.id)
+        : [...directasSeleccionadas, sesion.id],
+    );
+  }
+
+  const formatFecha = (fecha: Date) =>
+    new Intl.DateTimeFormat("es-ES", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(fecha);
 
   return (
     <form action={guardarRmAction} className="space-y-5">
       <input type="hidden" name="cc" value={cc} />
       <input type="hidden" name="id" value={macrocicloId} />
-      <input type="hidden" name="sesionRmId" value={sesionRmId} />
+      {sesionRmIds.map((sesionId) => (
+        <input key={sesionId} type="hidden" name="sesionRmIds" value={sesionId} />
+      ))}
 
       <div className="space-y-1">
         <h2 className="text-lg font-semibold text-text-primary dark:text-white">
           Sesión RM
         </h2>
         <p className="text-sm text-text-secondary">
-          Selecciona una sesión RM existente o realiza una nueva evaluación.
+          Selecciona una evaluación. Si son tests directos de Casas o
+          Naclerio, puedes combinar varias sesiones; para un ejercicio
+          repetido se usará siempre el resultado más reciente.
         </p>
       </div>
 
@@ -134,29 +170,29 @@ export function PasoRm({
             key={sesion.id}
             className={[
               "flex cursor-pointer items-center gap-3 rounded-2xl border p-4 transition",
-              sesionRmId === sesion.id
+              sesionRmIds.includes(sesion.id)
                 ? "border-accent bg-accent/5"
                 : "border-gray-200 bg-bg-main dark:border-white/10 dark:bg-bg-subtle",
             ].join(" ")}
           >
             <input
-              type="radio"
+              type={esDirecta(sesion) ? "checkbox" : "radio"}
               name="sesionRmOption"
-              checked={sesionRmId === sesion.id}
-              onChange={() => setSesionRmId(sesion.id)}
+              checked={sesionRmIds.includes(sesion.id)}
+              onChange={() => alternarSesion(sesion)}
               className="h-4 w-4 accent-accent"
             />
             <div>
               <p className="font-medium text-text-primary dark:text-white">
-                Sesión #{sesion.id}
+                {formatFecha(sesion.createdAt)}
               </p>
               <p className="text-sm text-text-secondary">
-                {new Intl.DateTimeFormat("es-ES", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                }).format(sesion.createdAt)}{" "}
-                · {sesion.resultados.length} ejercicios
+                {sesion.rmMethod === "estimation"
+                  ? "Estimación"
+                  : sesion.rmMethod === "casas"
+                    ? "Protocolo Casas"
+                    : "Test de Naclerio"}{" "}
+                · {sesion.resultados.length} ejercicio(s)
               </p>
             </div>
           </label>
@@ -173,7 +209,7 @@ export function PasoRm({
       ) : null}
 
       <div className="space-y-3">
-        <UsarSesionRmButton disabled={!sesionRmId} />
+        <UsarSesionRmButton disabled={sesionRmIds.length === 0} />
 
         <a
           href={`/nueva-sesion?cc=${encodeURIComponent(cc)}&macrocicloId=${macrocicloId}&returnTo=macrociclo`}
@@ -469,6 +505,7 @@ export function PasoSemanas({
   const router = useRouter();
   const [isRefreshPending, startRefreshTransition] = useTransition();
   const [avanzarAlRefrescar, setAvanzarAlRefrescar] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
   useEffect(() => {
     if (avanzarAlRefrescar && !isRefreshPending) {
@@ -1097,7 +1134,7 @@ export function PasoSemanas({
               router.refresh();
             });
           } else {
-            alert(result.error);
+            setErrorGuardado(result.error);
           }
         }}
         className="space-y-3"
@@ -1112,6 +1149,13 @@ export function PasoSemanas({
           Guardar periodización y continuar
         </FormSubmitButton>
       </form>
+      <AppDialog
+        open={errorGuardado !== null}
+        title="No se pudo guardar la periodización"
+        onClose={() => setErrorGuardado(null)}
+      >
+        {errorGuardado}
+      </AppDialog>
     </div>
   );
 }
@@ -1283,7 +1327,7 @@ export function PasoRevision({
   objetivoTipo,
   fechaInicio,
   fechaFin,
-  sesionRmId,
+  sesionesRmSeleccionadas,
   vo2maxSnapshot,
   mesociclos,
   buildPeriodizacionPayload,
@@ -1293,7 +1337,7 @@ export function PasoRevision({
   objetivoTipo: ObjetivoTipo;
   fechaInicio: string;
   fechaFin: string;
-  sesionRmId: number | "";
+  sesionesRmSeleccionadas: SesionRm[];
   vo2maxSnapshot: Vo2maxSnapshot | null;
   mesociclos: Array<{ id: number; tipo: string; carga: CargaMesocicloInputData | null }>;
   buildPeriodizacionPayload: () => {
@@ -1339,10 +1383,24 @@ export function PasoRevision({
         <p className="font-medium text-text-primary dark:text-white">
           {fechaInicio} - {fechaFin}
         </p>
-        <p className="mt-2 text-sm text-text-secondary">Sesión RM</p>
-        <p className="font-medium text-text-primary dark:text-white">
-          {sesionRmId ? `Sesión #${sesionRmId}` : "Sin asignar"}
-        </p>
+        <p className="mt-2 text-sm text-text-secondary">Sesiones RM</p>
+        {sesionesRmSeleccionadas.length > 0 ? (
+          <ul className="mt-1 space-y-1">
+            {sesionesRmSeleccionadas.map((sesion) => (
+              <li key={sesion.id} className="font-medium text-text-primary dark:text-white">
+                {new Intl.DateTimeFormat("es-ES", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(sesion.createdAt)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="font-medium text-text-primary dark:text-white">Sin asignar</p>
+        )}
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-subtle">
@@ -1490,7 +1548,7 @@ export function PasoRevision({
       <form action={activarMacrocicloAction}>
         <input type="hidden" name="cc" value={cc} />
         <input type="hidden" name="id" value={macrocicloId} />
-        <ActivarMacrocicloButton disabled={!sesionRmId} />
+        <ActivarMacrocicloButton disabled={sesionesRmSeleccionadas.length === 0} />
       </form>
     </div>
   );

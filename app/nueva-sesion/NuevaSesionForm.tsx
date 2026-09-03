@@ -11,11 +11,7 @@ import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { Section } from "@/components/ui/Section";
 import { createSesionAction } from "@/actions/sesion";
 import { EstimacionEjercicios } from "./EstimacionEjercicios";
-import {
-  ProtocoloDirecto,
-  type EjercicioProtocolo,
-  type ProtocoloId,
-} from "./ProtocoloDirecto";
+import { ProtocoloDirecto, type ProtocoloId } from "./ProtocoloDirecto";
 
 function formatWeight(value: number) {
   return new Intl.NumberFormat("es-CO", {
@@ -146,21 +142,6 @@ export function NuevaSesionForm({
       nota: EXERCISE_NOTES[ejercicio.id],
     }));
   }, [ejercicios, persona, pesoActual]);
-
-  const ejerciciosProtocolo: EjercicioProtocolo[] = useMemo(
-    () =>
-      ejercicios
-        .filter((ejercicio) => !ejercicio.esDeTiempo)
-        .map((ejercicio) => ({
-          id: ejercicio.id,
-          nombre: ejercicio.nombre,
-          incrementoMinimoKg: ejercicio.incrementoMinimoKg,
-          patron: ejercicio.patron,
-          rmVigenteKg: ejercicio.rmVigenteKg,
-          rmVigenteFecha: ejercicio.rmVigenteFecha,
-        })),
-    [ejercicios],
-  );
 
   function handleFormKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
     if (e.key === "Enter") {
@@ -441,7 +422,6 @@ export function NuevaSesionForm({
               <div className="pt-2">
                 <ProtocoloDirecto
                   protocolo={metodoEfectivo}
-                  ejercicios={ejerciciosProtocolo}
                   formatWeight={formatWeight}
                   onRmMedidoChange={setProtocolFinalRM}
                 />

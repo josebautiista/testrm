@@ -328,6 +328,7 @@ export async function guardarRmSnapshot({
   id,
   personaId,
   sesionRmId,
+  sesionRmIds,
   rmSnapshot,
   pasoActual,
   context,
@@ -335,6 +336,7 @@ export async function guardarRmSnapshot({
   id: number;
   personaId: number;
   sesionRmId: number;
+  sesionRmIds: number[];
   rmSnapshot: Record<string, unknown>;
   pasoActual: number;
   context: AuditContext;
@@ -352,7 +354,7 @@ export async function guardarRmSnapshot({
     macrocicloId: id,
     personaId,
     action: "rm_asociado",
-    metadata: { sesionRmId },
+    metadata: { sesionRmId, sesionRmIds },
     context,
   });
 

@@ -56,6 +56,9 @@ describe.skipIf(!DATABASE_URL)("actions/sesion — integración", () => {
       await prisma.sesion.deleteMany({ where: { id: { in: sesionIds } } });
     }
     await prisma.persona.delete({ where: { id: personaId } });
+    await prisma.ejercicio.deleteMany({
+      where: { esEjercicioLibre: true, nombre: { startsWith: `${cc}-` } },
+    });
     await prisma.$disconnect();
   });
 
@@ -109,6 +112,33 @@ describe.skipIf(!DATABASE_URL)("actions/sesion — integración", () => {
         protocoloRepeticiones: 0,
       }),
     ).rejects.toThrow();
+  });
+
+  it("guarda un ejercicio escrito libremente sin publicarlo en el catálogo", async () => {
+    const nombreLibre = `${cc}-Peso muerto con agarre especial`;
+    const { sesionId } = await createSesion({
+      cc,
+      requestId: `${cc}-ejercicio-libre`,
+      peso: 80,
+      trainingMonths: 12,
+      rmMethod: "casas",
+      estimatedRM: 90,
+      finalRM: 95,
+      protocolData: { metodo: "casas", ejercicioNombre: nombreLibre },
+      ejercicios: [],
+      protocoloEjercicioNombre: nombreLibre,
+      protocoloRepeticiones: 1,
+    });
+    sesionIds.push(sesionId);
+
+    const resultado = await prisma.resultadoEjercicio.findFirstOrThrow({
+      where: { sesionId },
+      include: { ejercicio: true },
+    });
+    expect(resultado.ejercicio.nombre).toBe(nombreLibre);
+    expect(resultado.ejercicio.esEjercicioLibre).toBe(true);
+    expect(resultado.ejercicio.activo).toBe(false);
+    expect(resultado.rm1Estimado).toBe(95);
   });
 
   it("un test directo posterior cierra el vigente anterior y deja una sola fila abierta", async () => {

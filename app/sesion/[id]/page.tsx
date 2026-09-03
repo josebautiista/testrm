@@ -350,10 +350,10 @@ export default async function SesionDetailPage({
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {sesion.resultados.map((resultado) => {
               // D-02/TASK-024 · H-13: la estimación principal es siempre la
-              // fórmula primaria (Epley) con su banda. `rm1Estimado` puede
+              // fórmula primaria (Epley). `rm1Estimado` puede
               // faltar en filas históricas previas al backfill (C-03); antes
-              // se caía a `getMaxFormulaRM`, que es exactamente el estimador
-              // sesgado que prohíbe el ADR-02. Ahora se recalcula Epley desde
+              // no debe caer al máximo de las fórmulas, que sería un estimador
+              // sesgado. Ahora se recalcula Epley desde
               // la carga y las repeticiones ya guardadas — el mismo criterio
               // que usa `prisma/backfill-resultados.ts`.
               const esHistoricoSinEstimacion = resultado.rm1Estimado === null;
@@ -429,25 +429,10 @@ export default async function SesionDetailPage({
                         tone="positive"
                         compact
                       />
-                      {resultado.rmMin !== null && resultado.rmMax !== null ? (
-                        <>
-                          <MetricRow
-                            label="Banda de incertidumbre"
-                            value={`${formatNumber(resultado.rmMin)} – ${formatNumber(resultado.rmMax)} kg`}
-                            compact
-                          />
-                          <p className="text-xs leading-5 text-text-tertiary">
-                            Es el rango que dan las 8 fórmulas con los mismos
-                            datos. Mide cuánto discrepan entre sí, no un margen
-                            de error estadístico.
-                          </p>
-                        </>
-                      ) : null}
                       {esHistoricoSinEstimacion ? (
                         <p className="text-xs leading-5 text-text-tertiary">
-                          Sesión anterior al cálculo con banda: el 1RM se
-                          recalculó con la fórmula primaria a partir del peso y
-                          las repeticiones guardados.
+                          Sesión histórica: el 1RM se recalculó con la fórmula
+                          primaria a partir del peso y las repeticiones guardados.
                         </p>
                       ) : null}
                       {resultado.confianza ? (

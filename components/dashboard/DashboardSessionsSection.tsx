@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 
 import { deleteSesionAction } from "@/actions/sesion";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { AppDialog } from "@/components/ui/AppDialog";
 
 function EliminarSesionButton() {
   const { pending } = useFormStatus();
@@ -51,6 +52,7 @@ export function DashboardSessionsSection({
   const sectionRef = useRef<HTMLElement>(null);
   const [showAll, setShowAll] = useState(false);
   const [highlight, setHighlight] = useState(saved);
+  const [sessionToDelete, setSessionToDelete] = useState<DashboardSession | null>(null);
   const previewSessions = useMemo(
     () => sessions.slice(0, PREVIEW_LIMIT),
     [sessions],
@@ -161,22 +163,13 @@ export function DashboardSessionsSection({
                     </p>
                   </Link>
                   <div className="flex shrink-0 items-center gap-3">
-                    <form
-                      action={deleteSesionAction}
-                      onSubmit={(event) => {
-                        if (
-                          !window.confirm(
-                            "¿Eliminar esta sesión? Esta acción no se puede deshacer.",
-                          )
-                        ) {
-                          event.preventDefault();
-                        }
-                      }}
+                    <button
+                      type="button"
+                      onClick={() => setSessionToDelete(session)}
+                      className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:border-white/10 dark:hover:border-red-500/30 dark:hover:bg-red-950/30 dark:hover:text-red-200"
                     >
-                      <input type="hidden" name="sesionId" value={session.id} />
-                      <input type="hidden" name="cc" value={cc} />
-                      <EliminarSesionButton />
-                    </form>
+                      Eliminar
+                    </button>
                     <Link
                       href={session.href}
                       aria-label={`Abrir ${session.nombre}`}
@@ -207,6 +200,24 @@ export function DashboardSessionsSection({
           ) : null}
         </div>
       )}
+      <AppDialog
+        open={sessionToDelete !== null}
+        title="Eliminar sesión"
+        tone="danger"
+        onClose={() => setSessionToDelete(null)}
+        actions={
+          sessionToDelete ? (
+            <form action={deleteSesionAction}>
+              <input type="hidden" name="sesionId" value={sessionToDelete.id} />
+              <input type="hidden" name="cc" value={cc} />
+              <EliminarSesionButton />
+            </form>
+          ) : null
+        }
+      >
+        ¿Quieres eliminar la sesión del {sessionToDelete?.fecha}? Esta acción
+        no se puede deshacer.
+      </AppDialog>
     </section>
   );
 }
