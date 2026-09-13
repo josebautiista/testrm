@@ -29,7 +29,6 @@ import {
   PERFIL_POR_DEFECTO,
   type PerfilDeportivo,
 } from "@/lib/planificacion/perfil";
-import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import { guardarPasoObjetivoFechasAction } from "@/actions/macrociclo";
 import {
   PasoRm,
@@ -87,7 +86,15 @@ type MacrocicloMesociclo = {
   fechaFin: Date;
   orden: number;
   semanas: Array<{ numeroSemana: number; frecuencia: number; fechaInicio: Date; fechaFin: Date }>;
-  carga: unknown;
+  /** ADR-47 · objetivo de bloque del mesociclo (reemplaza a `carga`/`MesocicloCarga`). */
+  objetivoBloque: string | null;
+  intensidadMinPct: number | null;
+  intensidadMaxPct: number | null;
+  repsMin: number | null;
+  repsMax: number | null;
+  rirObjetivo: number | null;
+  progresion: string | null;
+  seriesSemanalesPorPatron: unknown;
 };
 
 type SemanaEjercicio = {
@@ -159,6 +166,8 @@ type Persona = {
   talla: number;
   cintura: number | null;
   cadera: number | null;
+  edad: number;
+  sexo: string;
   /** ADR-43 · Base de la frecuencia semanal propuesta (C-12). */
   diasDisponibles?: number;
 };
@@ -264,6 +273,9 @@ export function MacrocicloWizard({
   );
   const [vo2LegerEtapa, setVo2LegerEtapa] = useState(
     vo2maxInicial?.metodo === "leger" ? String(vo2maxInicial.etapa) : "",
+  );
+  const [vo2Directo, setVo2Directo] = useState(
+    vo2maxInicial?.metodo === "directo" ? String(vo2maxInicial.valor) : "",
   );
 
   const [perfil, setPerfil] = useState<PerfilDeportivo>(() =>
@@ -457,6 +469,10 @@ export function MacrocicloWizard({
             setCooperDistancia={setVo2CooperDistancia}
             legerEtapa={vo2LegerEtapa}
             setLegerEtapa={setVo2LegerEtapa}
+            valorDirecto={vo2Directo}
+            setValorDirecto={setVo2Directo}
+            edad={persona.edad}
+            sexo={persona.sexo}
           />
         );
       case 5:
@@ -505,11 +521,7 @@ export function MacrocicloWizard({
           <PasoCarga
             cc={persona.cc}
             macrocicloId={macrociclo.id}
-            perfil={perfil}
-            mesociclos={macrociclo.mesociclos.map((m) => ({
-              ...m,
-              carga: m.carga as CargaMesocicloInputData | null,
-            }))}
+            mesociclos={macrociclo.mesociclos}
             onContinuar={() => irAPaso(PASO_WIZARD.revision)}
           />
         );
@@ -527,10 +539,7 @@ export function MacrocicloWizard({
             vo2maxSnapshot={
               (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null
             }
-            mesociclos={macrociclo.mesociclos.map((m) => ({
-              ...m,
-              carga: m.carga as CargaMesocicloInputData | null,
-            }))}
+            mesociclos={macrociclo.mesociclos}
             buildPeriodizacionPayload={buildPeriodizacionPayload}
           />
         );

@@ -365,6 +365,11 @@ model SesionPlanificada {
   fechaSugerida       DateTime? @db.Date
   duracionEstimadaMin Int
   enfoque             String?
+  // ADR-49: el motor ya no elige ejercicios ni calcula cargas — el
+  // entrenador escribe aquí el WOD real de la sesión (qué ejercicios, en
+  // qué orden, con qué esquema), usando la zona de %1RM/reps/RIR del
+  // mesociclo y los patrones de `enfoque` como referencia.
+  wod                 String?  @db.Text
   estado              String   @default("planificada") // planificada|realizada|parcial|omitida
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

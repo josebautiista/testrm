@@ -1,10 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 
-import { MesocicloCargaEditor } from "@/components/macrociclo/MesocicloCargaEditor";
+import { ObjetivoBloqueEditor } from "@/components/macrociclo/ObjetivoBloqueEditor";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { prisma } from "@/lib/prisma";
 import { MESES_POR_TIPO_LABEL, type TipoMesociclo } from "@/lib/macrociclo";
-import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 
 export default async function CargaMesocicloPage({
   params,
@@ -45,30 +44,11 @@ export default async function CargaMesocicloPage({
 
   const mesociclo = await prisma.macrocicloMesociclo.findUnique({
     where: { id: mesocicloId, macrocicloId: macrociclo.id },
-    include: {
-      semanas: { orderBy: { numeroSemana: "asc" } },
-      carga: true,
-    },
   });
 
   if (!mesociclo) {
     notFound();
   }
-
-  const cargaInicial = (mesociclo.carga
-    ? {
-        tiempoSesionMin: mesociclo.carga.tiempoSesionMin,
-        direcciones: mesociclo.carga.direcciones,
-        volumen: mesociclo.carga.volumen,
-        microciclos: mesociclo.carga.microciclos,
-        sesiones: mesociclo.carga.sesiones,
-      }
-    : null) as CargaMesocicloInputData | null;
-
-  const semanas = mesociclo.semanas.map((s) => ({
-    numeroSemana: s.numeroSemana,
-    frecuencia: s.frecuencia,
-  }));
 
   const label =
     MESES_POR_TIPO_LABEL[mesociclo.tipo as TipoMesociclo] ?? mesociclo.tipo;
@@ -77,19 +57,28 @@ export default async function CargaMesocicloPage({
     <main className="space-y-6 pb-10">
       <header className="space-y-2">
         <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-          Dosificación de carga
+          Objetivo de bloque
         </h1>
         <p className="text-sm text-text-secondary">
           {label} · Macrociclo #{macrociclo.id}
         </p>
       </header>
 
-      <MesocicloCargaEditor
+      <ObjetivoBloqueEditor
         cc={cc}
         macrocicloId={macrociclo.id}
         mesocicloId={mesociclo.id}
-        semanas={semanas}
-        cargaInicial={cargaInicial}
+        tipoMesociclo={mesociclo.tipo as TipoMesociclo}
+        valorInicial={{
+          objetivoBloque: mesociclo.objetivoBloque,
+          intensidadMinPct: mesociclo.intensidadMinPct,
+          intensidadMaxPct: mesociclo.intensidadMaxPct,
+          repsMin: mesociclo.repsMin,
+          repsMax: mesociclo.repsMax,
+          rirObjetivo: mesociclo.rirObjetivo,
+          progresion: mesociclo.progresion,
+          seriesSemanalesPorPatron: mesociclo.seriesSemanalesPorPatron,
+        }}
       />
 
       <PrimaryButton

@@ -33,7 +33,7 @@ export type TipoMicrociclo =
   | "aproximacion"
   /** ADR-38 · Semana de afinamiento previa a competir: volumen recortado, intensidad intacta. */
   | "taper";
-export type MetodoVo2max = "leger" | "cooper";
+export type MetodoVo2max = "leger" | "cooper" | "directo";
 export type UserType = "persona" | "admin";
 
 export const OBJETIVOS: { value: ObjetivoTipo; label: string }[] = [
@@ -215,7 +215,7 @@ export type MedidasSnapshot = {
   extractedDataRaw?: Record<string, unknown>;
 };
 
-export type Vo2maxSnapshot =
+export type Vo2maxSnapshot = (
   | {
       metodo: "cooper";
       distanciaMetros: number;
@@ -226,7 +226,22 @@ export type Vo2maxSnapshot =
       etapa: number;
       velocidadKmh: number;
       valor: number;
-    };
+    }
+  | {
+      metodo: "directo";
+      valor: number;
+    }
+) & {
+  /**
+   * true si el valor cae fuera del rango fisiológicamente plausible
+   * (`VO2MAX_RANGO_PLAUSIBLE`) o, en Léger, si la etapa excede la tabla de
+   * velocidades validada (`ETAPA_LEGER_MAXIMA`). No bloquea el guardado —
+   * a diferencia del RM, el VO2max de este módulo es solo informativo y no
+   * alimenta la prescripción (ver services/macrociclo.service.ts) — pero
+   * avisa que el dato probablemente sea un error de captura.
+   */
+  fueraDeRango?: boolean;
+};
 
 export type PeriodoInput = {
   tipo: TipoPeriodo;
@@ -349,7 +364,7 @@ export function isTipoMicrociclo(value: string): value is TipoMicrociclo {
 }
 
 export function isMetodoVo2max(value: string): value is MetodoVo2max {
-  return ["leger", "cooper"].includes(value);
+  return ["leger", "cooper", "directo"].includes(value);
 }
 
 // Test de Léger (course-navette 20 m): la etapa 1 inicia en 8.5 km/h
@@ -358,10 +373,48 @@ export function velocidadLegerKmh(etapa: number): number {
   return 8.5 + 0.5 * (etapa - 1);
 }
 
-// VO2max estimado (ml/kg/min) según Léger & Lambert.
+// VO2max estimado (ml/kg/min) según Léger & Lambert (1982): VO2max = 5.857·v − 19.458,
+// validada sobre 91 adultos de 18-45 años (r=0.84). No lleva término de edad
+// (a diferencia de la versión juvenil de Léger et al. 1988), por lo que fuera
+// de ese rango de edad la predicción pierde precisión sin dejar de ser la
+// fórmula de referencia para el protocolo de 1 min/etapa usado aquí.
 export function calcularVo2maxLeger(etapa: number): number {
   const velocidad = velocidadLegerKmh(etapa);
   return 5.857 * velocidad - 19.458;
+}
+
+/**
+ * Última etapa cubierta por las tablas de velocidad del protocolo estándar
+ * de 21 paliers. Por encima de esta etapa la fórmula sigue siendo lineal y
+ * "funciona" aritméticamente, pero ya no hay evidencia de que la extrapolación
+ * sea válida — se acepta el dato (puede ser un atleta de élite real) pero se
+ * marca `fueraDeRango`.
+ */
+export const ETAPA_LEGER_MAXIMA = 21;
+
+/**
+ * Por debajo de esta distancia la fórmula de Cooper (`(d − 504.9) / 44.73`)
+ * cruza a cero o a negativo — una singularidad de la fórmula, no un caso
+ * límite de aptitud física. Se bloquea igual que RM bloquea repeticiones
+ * ≥30 (D-04): un VO2max negativo no es un dato válido que pueda guardarse.
+ */
+export const COOPER_DISTANCIA_MINIMA_M = 504.9;
+
+/**
+ * Rango fisiológicamente plausible de VO2max en población general: desde
+ * valores compatibles con insuficiencia funcional severa hasta el máximo
+ * documentado en deportistas de resistencia de élite (~96 ml/kg/min en
+ * esquí de fondo). Sirve solo para detectar errores de captura (p. ej. una
+ * coma corrida en la distancia); no es un límite normativo de "buena forma".
+ */
+export const VO2MAX_RANGO_PLAUSIBLE = { min: 15, max: 95 } as const;
+
+export function esVo2maxPlausible(valor: number): boolean {
+  return (
+    Number.isFinite(valor) &&
+    valor >= VO2MAX_RANGO_PLAUSIBLE.min &&
+    valor <= VO2MAX_RANGO_PLAUSIBLE.max
+  );
 }
 
 export function parseDateInput(value: string): Date | null {

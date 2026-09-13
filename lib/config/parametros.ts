@@ -73,6 +73,25 @@ export const INCREMENTO_INTENSIDAD_SEMANAL_PCT = { min: 2.5, max: 5 };
 /** R-08: incremento de series por patrón por semana en bloques de hipertrofia (ola de volumen). */
 export const INCREMENTO_VOLUMEN_SEMANAL_SERIES = { min: 1, max: 2 };
 
+/** ADR-47: etiquetas en español para el editor de objetivo de bloque (paso "Carga"). */
+export const OBJETIVO_BLOQUE_LABEL: Record<ObjetivoBloque, string> = {
+  fuerza_maxima: "Fuerza máxima",
+  hipertrofia: "Hipertrofia",
+  resistencia_fuerza: "Resistencia de fuerza",
+  potencia: "Potencia",
+  acumulacion: "Acumulación",
+  realizacion: "Realización",
+  recuperacion: "Recuperación",
+};
+
+/** ADR-47: etiquetas en español del tipo de progresión intra-mesociclo (R-08). */
+export const PROGRESION_LABEL: Record<ProgresionBloque, string> = {
+  lineal_intensidad: "Ola de intensidad (+%1RM cada semana)",
+  lineal_volumen: "Ola de volumen (+series cada semana)",
+  ondulante: "Ondulante",
+  mantenimiento: "Mantenimiento",
+};
+
 /** R-10: deload programado. */
 export const DELOAD = {
   /** Cada 4ª semana en bloques de acumulación. */

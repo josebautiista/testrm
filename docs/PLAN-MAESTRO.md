@@ -297,7 +297,7 @@ El atleta ve la sesión del día con ejercicios, series, repeticiones objetivo, 
 - **Produce:** propuesta de plan (objeto puro, sin persistir).
 - **Depende de:** M1, M2, M4.
 - **Prioridad:** Alta.
-- **Reutiliza:** `lib/macrociclo-periodizacion.ts` (corregido), `lib/training.ts` (ampliado), `lib/mesociclo-carga.ts` (como capa de presupuesto de tiempo).
+- **Reutiliza:** `lib/macrociclo-periodizacion.ts` (corregido), `lib/training.ts` (ampliado). `lib/mesociclo-carga.ts` se retiró (ADR-47); el presupuesto de tiempo lo resuelve `Persona.minutosPorSesion`/`disponibilidad.minutosPorSesion` (R-14), no una capa aparte.
 
 ### M6 · Plan
 
@@ -667,9 +667,9 @@ Toda regeneración recibe una `fechaCorte` (por defecto, hoy). Semanas anteriore
 
 Cada regla lleva su justificación. Todas son **parametrizables** y viven en un único módulo de configuración, no dispersas por componentes.
 
-### R-01 · Selección de ejercicios
-Por **patrón de movimiento**, no por nombre. Cada sesión cubre patrones según el enfoque del día; se prioriza el ejercicio con RM vigente de mayor confianza y equipamiento disponible.
-*Justificación:* prescribir por patrón permite sustituir ejercicios sin romper el plan y evita duplicar estímulo sobre el mismo grupo muscular.
+### R-01 · Selección de ejercicios — **superada por ADR-49**
+~~Por **patrón de movimiento**, no por nombre. Cada sesión cubre patrones según el enfoque del día; se prioriza el ejercicio con RM vigente de mayor confianza y equipamiento disponible.~~
+El motor ya no selecciona ningún ejercicio específico (`docs/DECISIONES.md`, ADR-49): pedido explícito del entrenador, que decide el WOD. Lo único que conserva de esta regla es el reparto de **patrones** de movimiento entre sesiones (R-02, `lib/planificacion/prescripcion.ts agruparPatronesPorDia`) — sin priorizar ni fijar un ejercicio concreto por patrón.
 
 ### R-02 · Frecuencia
 2 sesiones por grupo muscular y semana como objetivo; con `diasPorSemana ≤ 2`, cuerpo completo; 3–4, torso/pierna o cuerpo completo; ≥ 5, división por patrón.
@@ -692,13 +692,15 @@ Zona de %1RM por objetivo de bloque:
 
 *Justificación:* alineado con la tabla ya presente en `lib/training.ts` (que refleja los modelos de progresión del ACSM) pero ampliada con RIR, que es lo que permite que la carga siga siendo correcta cuando el 1RM ha cambiado desde el último test.
 
-### R-05 · Uso del RM
+### R-05 · Uso del RM — **el motor que la ejecutaba se retiró (ADR-50)**
 `carga = RM_vigente(ejercicio, fecha_generación) × %objetivo`, redondeada **hacia abajo** al `incrementoMinimoKg` del ejercicio. Se copian `rmUsadoKg` y `rmVigenteId` a la prescripción.
 *Justificación:* redondear hacia abajo evita superar involuntariamente la zona objetivo; copiar el valor es lo que garantiza la inmutabilidad histórica.
+*Estado:* `/generar` y todo `lib/planificacion/motor.ts` se eliminaron (ADR-50, `docs/DECISIONES.md`) — el entrenador decide ejercicios y carga a mano vía el WOD. Esta regla ya no tiene código que la implemente; queda documentada por si algún día se retoma un registro estructurado por ejercicio (`registrarSerieAction`/`POST /api/ejecucion/serie` conservan el camino de datos, ver ADR-50).
 
-### R-06 · Ejercicios sin RM
+### R-06 · Ejercicios sin RM — **el motor que la ejecutaba se retiró (ADR-50)**
 Si no hay RM vigente: se prescribe por rango de repeticiones y RIR objetivo, sin carga, y la primera sesión sirve de calibración. Nunca se extrapola el RM de un ejercicio a otro.
 *Justificación:* la correlación de 1RM entre ejercicios distintos es demasiado débil para prescribir. Es exactamente el error que comete hoy `finalRM` (D-01).
+*Estado:* mismo comentario que R-05.
 
 ### R-07 · Uso del RIR
 Toda prescripción lleva RIR objetivo junto al %1RM. Si ambos entran en conflicto durante la ejecución, **manda el RIR**: el atleta ajusta la carga y el sistema lo registra como evidencia.
@@ -812,12 +814,12 @@ Un RM con más de 12 semanas se marca `caducado` y genera un aviso de reevaluaci
 
 ### F-09 · Léger (VO2máx)
 - **Fórmulas:** `v = 8.5 + 0.5 × (etapa − 1)`; `VO2máx = 5.857 × v − 19.458`
-- **Unidad:** ml/kg/min. **Rango:** etapas 1–21.
-- **Estado:** ya implementada y correcta (`lib/macrociclo.ts:275-283`). Se conserva.
+- **Unidad:** ml/kg/min. **Rango:** etapas 1–21 (`ETAPA_LEGER_MAXIMA`); por encima se acepta pero se marca `fueraDeRango`.
+- **Estado:** implementada y correcta (`lib/macrociclo.ts`). Se conserva. Ver ADR-45 (`docs/DECISIONES.md`) para la validación de rango y la clasificación por edad/sexo añadidas.
 
 ### F-10 · Cooper (VO2máx)
 - **Fórmula:** `VO2máx = (distancia_m − 504.9) / 44.73`
-- **Estado:** documentada en `PLAN_MACROCICLO_ENTRENAMIENTO.md`. Verificar que esté implementada donde se usa.
+- **Estado:** implementada y verificada correcta (`actions/macrociclo.ts:guardarVo2maxAction`). Distancia mínima bloqueada en `COOPER_DISTANCIA_MINIMA_M` (504.9 m, la singularidad de la propia fórmula). Ver ADR-45.
 
 ### F-11 · IMC e ICC
 - **Estado:** implementadas en `helpers/calculations.ts`, con clasificación OMS. Correctas. Se conservan.
@@ -980,7 +982,7 @@ Introducir un validador de esquemas compartido (Zod o equivalente) para las entr
 | `app/sesion/[id]/page.tsx` | **Se modifica:** resultados por ejercicio; se elimina el RM global |
 | `app/macrociclo/[id]/MacrocicloWizard.tsx` (9 pasos) | **Se combina:** pasos 4–8 → generador (P-04). Quedan 4 pasos: objetivo, evaluación, disponibilidad, revisión |
 | `app/macrociclo/[id]/wizard-steps.tsx` (1580 líneas) | **Se divide** en componentes por paso y se reduce a editor de excepciones |
-| `components/macrociclo/MesocicloCargaEditor.tsx` | **Se mantiene** como vista avanzada opcional (presupuesto de tiempo por direcciones) |
+| `components/macrociclo/MesocicloCargaEditor.tsx` | **Retirado (ADR-47).** Reemplazado por `components/macrociclo/ObjetivoBloqueEditor.tsx`, que edita `objetivoBloque`/zona/series-por-patrón sobre `MacrocicloMesociclo` |
 | `components/results/TrainingRecommendations.tsx` | **Se modifica:** por ejercicio, no sobre el RM global |
 | `components/dashboard/PhaseProgressionBanner.tsx` | **Se elimina** al integrarse las fases en el mesociclo (D-14) |
 | `components/dashboard/RetestReminderBanner.tsx` | **Se modifica:** avisa por ejercicio con RM caducado (R-15), no por días desde la última sesión |
@@ -1796,7 +1798,7 @@ Además, cada constante numérica del dominio debe vivir en `lib/config/parametr
 | Q-01 | ¿El producto es multi-entrenador o de un solo entrenador? | Afecta al modelo de autorización y a todas las consultas |
 | Q-02 | ¿El atleta registra su propio entrenamiento, o lo hace el entrenador? | Afecta a P-07 y al modelo de acceso |
 | Q-03 | ¿Se recalibran los coeficientes de masa corporal del test? | Afecta a la validez de todas las estimaciones |
-| Q-04 | ¿Se conservan las "direcciones" en minutos o se simplifican? | Afecta a `MesocicloCarga` y al paso 8 |
+| Q-04 | ~~¿Se conservan las "direcciones" en minutos o se simplifican?~~ **Resuelto (ADR-47, `docs/DECISIONES.md`): se simplifican.** El paso 7 del wizard edita objetivo de bloque (`objetivoBloque`, zona %1RM, reps, RIR, series/patrón, progresión) sobre `MacrocicloMesociclo` en vez de minutos/direcciones sobre `MesocicloCarga`. | Afectaba a `MesocicloCarga` y al paso 7 |
 | Q-05 | ¿Qué ejercicios entran en el catálogo más allá de los 6 actuales? | Afecta a la utilidad real del motor |
 | Q-06 | ¿Se implementa autenticación real de persona? | Riesgo de privacidad de datos de salud |
 | Q-07 | ¿Qué duraciones de macrociclo hay que soportar? | Determina cuántas plantillas hay que construir |

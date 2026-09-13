@@ -84,6 +84,61 @@ describe.skipIf(!DATABASE_URL)("services/ejecucion.service — integración", ()
     expect(vigenteTrasSerie2!.valorKg).toBe(vigenteTrasSerie1!.valorKg);
   });
 
+  it("ADR-51: sin RIR reportado, cae al estimador primario (estimarRm) en vez de perder el dato", async () => {
+    const sesion = await crearSesionRealizada({ personaId, estado: "completa" });
+
+    const serie = await registrarSerie(
+      {
+        sesionRealizadaId: sesion.id,
+        ejercicioId,
+        numeroSerie: 1,
+        cargaKg: 120,
+        repeticiones: 5,
+        rir: null,
+        requestId: `sin-rir-${Date.now()}`,
+      },
+      personaId,
+    );
+
+    // Epley(120, 5) = 120 * (1 + 0.0333*5) ≈ 140 kg.
+    expect(serie.e1rmKg).not.toBeNull();
+    expect(serie.e1rmKg!).toBeGreaterThan(130);
+    expect(serie.e1rmKg!).toBeLessThan(150);
+
+    const vigente = await prisma.rmVigente.findFirst({
+      where: { personaId, ejercicioId, validoHasta: null },
+    });
+    expect(vigente!.origen).toBe("e1rm_entrenamiento");
+    expect(vigente!.valorKg).toBe(serie.e1rmKg);
+  });
+
+  it("ADR-51: sin RIR y con repeticiones no utilizables (>15), no actualiza el RM vigente", async () => {
+    const sesion = await crearSesionRealizada({ personaId, estado: "completa" });
+    const vigenteAntes = await prisma.rmVigente.findFirst({
+      where: { personaId, ejercicioId, validoHasta: null },
+    });
+
+    const serie = await registrarSerie(
+      {
+        sesionRealizadaId: sesion.id,
+        ejercicioId,
+        numeroSerie: 1,
+        cargaKg: 20,
+        repeticiones: 20,
+        rir: null,
+        requestId: `no-utilizable-${Date.now()}`,
+      },
+      personaId,
+    );
+
+    expect(serie.e1rmKg).toBeNull();
+
+    const vigenteDespues = await prisma.rmVigente.findFirst({
+      where: { personaId, ejercicioId, validoHasta: null },
+    });
+    expect(vigenteDespues?.id).toBe(vigenteAntes?.id);
+  });
+
   it("TASK-038: idempotencia — dos envíos con el mismo requestId crean una sola serie", async () => {
     const sesion = await crearSesionRealizada({ personaId, estado: "completa" });
     const requestId = `idempotencia-${Date.now()}`;

@@ -1040,6 +1040,10 @@ paso de carga le pedía repartir porcentajes entre categorías que no aplican.
 El reparto inicial del volumen se **renormaliza a 100** sobre las direcciones que quedan.
 Se siguen pudiendo añadir o quitar a mano: esto solo cambia con cuáles se arranca.
 
+> **Superado por ADR-46:** esta tabla de tres/cuatro combinaciones se simplificó a una sola
+> — siempre físico — porque en la práctica ningún perfil real usaba táctico ni psicológico.
+> Ver ADR-46 más abajo.
+
 ### M-02 · El detalle no mostraba el perfil
 
 `app/macrociclo/[id]/page.tsx` mostraba objetivo, rango, sesión RM y VO2max, pero no
@@ -1206,6 +1210,416 @@ desplegable habría pisado ajustes deliberados.
 
 ---
 
+## ADR-45 · VO2max: las fórmulas eran correctas, faltaban los límites y el contexto
+
+**Contexto.** El paso de VO2max del asistente (`lib/macrociclo.ts`, `actions/macrociclo.ts:guardarVo2maxAction`)
+implementa dos protocolos de campo: Cooper (carrera de 12 minutos) y Léger (course-navette
+20 m). Se auditaron ambas fórmulas contra la literatura original:
+
+- **Cooper (F-10):** `VO2max = (distancia_m − 504.9) / 44.73` — coincide con Cooper (1968).
+  Correcta, sin cambios.
+- **Léger (F-09):** `VO2max = 5.857·v − 19.458` — coincide con Léger & Lambert (1982),
+  validada sobre 91 adultos de 18-45 años (r=0.84). Correcta, sin cambios. (Existe una
+  variante posterior con término de edad para población juvenil — Léger et al. 1988 — que
+  no aplica aquí porque el protocolo de esta app es el de 1 min/etapa para adultos.)
+
+Lo que faltaba no era la aritmética: era que **ninguna de las dos fórmulas validaba su
+entrada**, a diferencia de `lib/rm/estimacion.ts`, que sí bloquea repeticiones ≥30 (D-04) y
+marca `fueraDeRango`/`noUtilizable`. Dos problemas concretos:
+
+1. **Cooper acepta cualquier distancia > 0.** Por debajo de 504.9 m la resta del numerador
+   se vuelve negativa: la fórmula devuelve un VO2max negativo y el asistente lo guardaba
+   igual, sin aviso.
+2. **Léger acepta cualquier etapa entera ≥ 1.** El protocolo estándar solo tiene tabla de
+   velocidades hasta la etapa 21; una etapa 200 (typo o dato mal transcrito) produce un
+   número aritméticamente válido pero fisiológicamente absurdo, y se guardaba igual.
+
+Además, el resultado se mostraba como un número aislado (`42.30 ml/kg/min`) sin contexto:
+ni el propio atleta ni el entrenador podían saber si eso era bueno, regular o motivo de
+preocupación sin buscar una tabla aparte. Y no había ninguna advertencia de que ambos tests
+exigen esfuerzo máximo hasta el agotamiento — una omisión relevante en una app que los
+ofrece sin supervisión presencial garantizada.
+
+**Decisión.**
+
+1. **`COOPER_DISTANCIA_MINIMA_M = 504.9`** (la propia singularidad de la fórmula): por
+   debajo, `guardarVo2maxAction` rechaza el dato y devuelve al paso, igual que el bloqueo
+   duro de RM en D-04. No es un juicio sobre la condición física de nadie — es que la
+   fórmula deja de tener un resultado matemáticamente válido.
+2. **`ETAPA_LEGER_MAXIMA = 21`** y **`VO2MAX_RANGO_PLAUSIBLE = { min: 15, max: 95 }`**: a
+   diferencia del punto anterior, esto **no bloquea** — el VO2max de este módulo es
+   solo informativo y no alimenta la periodización (a diferencia del RM), así que no hay
+   el mismo riesgo de prescribir sobre un dato imposible. Se marca `fueraDeRango: true` en
+   el `Vo2maxSnapshot` y la UI muestra un aviso, pero el atleta puede guardar igual — podría
+   ser un resultado real de élite mal cubierto por la tabla.
+3. **Clasificación por edad y sexo** (`helpers/calculations.ts:getVO2MaxClassification`),
+   siguiendo el mismo patrón que `getIMCClassification`/`getICCClassification`: reutiliza
+   una tabla de normas de uso extendido en la industria del fitness (reproducida por ACE,
+   Topend Sports, certificaciones de entrenador personal), sin una única fuente académica
+   primaria citable — se documenta así explícitamente, igual que el índice de fuerza interno
+   (F-12) se presenta como referencia y no como estándar clínico.
+4. **Aviso de seguridad en el paso del asistente**: ambos tests son de esfuerzo máximo;
+   se añadió texto recomendando no realizarlos con condiciones cardiovasculares, lesión
+   reciente, embarazo o sedentarismo prolongado sin consultar antes con un profesional, y
+   recomendaciones básicas de calentamiento/hidratación antes de empezar.
+5. **Paridad de UI:** Cooper no mostraba una vista previa del resultado antes de guardar
+   (Léger sí). Ahora ambos métodos muestran el VO2max estimado, su categoría y cualquier
+   aviso de rango en cuanto el usuario termina de escribir el dato.
+6. **Método `directo`:** `PLAN_MACROCICLO_ENTRENAMIENTO.md` ya documentaba un tercer método
+   ("Directo: valor en ml/kg/min") que nunca se implementó — `MetodoVo2max` solo reconocía
+   `"leger" | "cooper"`. Se añadió como tercera opción del wizard ("Ya lo sé"): el atleta
+   ingresa un VO2max que ya conoce por otra vía (laboratorio, reloj con GPS, un test hecho
+   fuera de la app) sin tener que repetir un esfuerzo máximo. No hay fórmula que romper aquí
+   — solo se bloquea un valor no positivo; el rango fisiológico (`VO2MAX_RANGO_PLAUSIBLE`)
+   sigue funcionando como aviso, no como bloqueo, igual que en Léger.
+
+**Lo que se descartó.** Añadir un test submáximo alternativo (Rockport Walk Test, YMCA step
+test) para quien no deba hacer un test máximo — es la recomendación estándar en la
+literatura de evaluación de aptitud física, pero es una funcionalidad nueva, no un ajuste
+a lo existente; queda para una tarea aparte si se decide priorizarla. El método `directo`
+cubre el caso más común de esa misma necesidad (ya tener el dato) sin construir un test
+nuevo.
+
+**Fecha.** 2026-09-07. **Estado.** Implementado. Cobertura: `lib/macrociclo.test.ts`
+(`esVo2maxPlausible`, `getVO2MaxClassification`, `isMetodoVo2max`).
+
+---
+
+## ADR-46 · Direcciones de carga: fuera táctico, técnico y psicológico
+
+**Contexto.** ADR-41/M-01 ya había reducido el "siempre las cuatro direcciones" original
+(físico, táctico, técnico, psicológico — modelo de deportes de equipo) a un reparto
+condicional por perfil: 2 direcciones para "sin competencia", 3 para fuerza-potencia/
+resistencia/técnico-estético, las 4 completas solo para "mixto o intermitente que compite"
+(`direccionesPorDefectoPara`, `lib/mesociclo-carga.ts`). Pedido explícito: quitar
+entrenamiento táctico, técnico y psicológico del paso de carga.
+
+**Decisión.** `direccionesPorDefectoPara` y `DIRECCIONES_POR_DEFECTO` ya no distinguen por
+perfil — siempre devuelven una sola dirección, **físico**. Se eliminaron las constantes
+`DIRECCION_TACTICO`, `DIRECCION_TECNICO` y `DIRECCION_PSICOLOGICO`, y `PESO_INICIAL_DIRECCION`
+quedó con una sola entrada (`fisico: 100`). El parámetro `perfil` de `direccionesPorDefectoPara`
+y de `crearCargaInicial` se conserva sin usarse internamente (`void perfil;`, mismo patrón
+que `components/dashboard/IMCCard.tsx`) para no forzar un cambio en cascada de las firmas de
+`crearCargaInicial` ni del prop `perfil` de `MesocicloCargaEditor` — nadie pidió tocar esa
+plomería, solo qué direcciones trae por defecto.
+
+**Lo que no cambió.** El editor (`components/macrociclo/MesocicloCargaEditor.tsx`) sigue
+permitiendo añadir cualquier dirección a mano (botón "Nueva dirección"), así que quien
+necesite volver a repartir carga psicológica o táctica puede seguir haciéndolo — solo dejó
+de ofrecerse por defecto. Mesociclos ya creados con esas direcciones guardadas en su
+`CargaMesocicloData` (JSON persistido) no se tocan: este cambio solo afecta a qué se
+propone al abrir el editor de un mesociclo sin carga configurada todavía.
+
+**Fecha.** 2026-09-08. **Estado.** Implementado. Cobertura: `lib/mesociclo-carga.test.ts`.
+
+---
+
+## ADR-47 · Paso "Carga" del wizard: de minutos/direcciones a objetivo de bloque (resuelve Q-04)
+
+**Contexto.** D-13 y ADR-24 documentaban `MesocicloCarga` (paso 7 "Carga" del wizard manual,
+`MesocicloCargaEditor`) como un tercer sistema de carga desconectado: reparte **minutos de
+sesión** en una cascada de porcentajes (dirección → microciclo → sesión) heredada de
+planificación de deportes de equipo, sin relación con RM, kg, %1RM ni con el motor nuevo.
+Investigación pedida explícitamente por el entrenador sobre el estado del arte en
+programación de la carga para fuerza (no hipertrofia, no presupuesto de tiempo) confirmó que:
+
+- El motor de planificación (`lib/planificacion/**`, TASK-033/C-06) ya calcula y persiste
+  exactamente lo que hace falta — `MacrocicloMesociclo.objetivoBloque`, `intensidadMinPct/
+  MaxPct`, `repsMin/Max`, `rirObjetivo`, `seriesSemanalesPorPatron`, `progresion` — y ya
+  alimenta un camino de generación de plan completo (`/macrociclo/[id]/generar`,
+  `services/planificacion.service.ts`, TASK-039). El paso 7 del wizard manual era el único
+  lugar que seguía sin conectarse a esa pieza.
+- Las reglas ya escritas (R-03/R-04/R-07/R-08/R-10, `lib/config/parametros.ts`) están
+  alineadas con la evidencia 2023-2025 revisada: Pelland et al. 2024/2025 (meta-regresión,
+  *Sports Medicine*, 67 estudios/2058 sujetos) muestra retornos decrecientes de volumen mucho
+  más marcados en fuerza que en hipertrofia (superioridad no detectable pasadas ~3 series
+  fraccionales/semana/ejercicio) — consistente con que `RANGOS_VOLUMEN.fuerza_maxima` (6-12)
+  ya sea más bajo que el de hipertrofia (10-20); Ralston et al. 2017 (meta-análisis,
+  PMC5684266) encuentra beneficio incremental hasta ≥10 series/ejercicio/semana en población
+  mixta, lo que sitúa el rango real defendible entre ambos hallazgos — por eso
+  `RANGOS_VOLUMEN` se mantiene como rango editable, no como número fijo. Meta-análisis de
+  periodización lineal vs. ondulante (2026, *Frontiers*) no encuentran diferencia en fuerza,
+  lo que respalda no forzar un único modelo de progresión (`PROGRESION_POR_OBJETIVO` ya varía
+  por bloque). Una red de meta-análisis 2025 (PubMed 40791980) encuentra que RPE/APRE superan
+  a la prescripción pura por %1RM para maximizar fuerza en sentadilla y press banca — respalda
+  R-07 (el RIR manda sobre el %1RM en conflicto). El consenso Delphi de Bell et al. 2023
+  (*Frontiers*, PMC10511399) recomienda deload cada 4-6 semanas, ~1 semana, cayendo más el
+  volumen que la intensidad — coincide con R-10.
+
+**Decisión.** El paso 7 "Carga" deja de editar `MesocicloCarga` (minutos × direcciones) y
+pasa a editar el objetivo de bloque de cada mesociclo directamente sobre
+`MacrocicloMesociclo`: `objetivoBloque`, zona de %1RM, rango de reps, RIR objetivo, rango de
+series semanales por patrón de movimiento y tipo de progresión — con los valores por defecto
+resueltos desde `ZONAS_INTENSIDAD`/`RANGOS_VOLUMEN`/`PROGRESION_POR_OBJETIVO`
+(`lib/config/parametros.ts`) según `objetivoBloque`, y ese a su vez derivado del `tipo` de
+mesociclo cuando no hay override (`resolverObjetivoBloque`, ya existente en
+`lib/planificacion/fase.ts`, reutilizado sin duplicar el criterio).
+
+`MesocicloCargaEditor.tsx`, `lib/mesociclo-carga.ts` (y su test) y la acción
+`guardarCargaMesocicloAction`/`guardarCargaMesociclo` se retiraron del código: nada los
+importa ya. **El modelo `MesocicloCarga` y su tabla en base de datos no se tocan** — no hay
+migración de borrado. Es una decisión deliberada, no un olvido: macrociclos ya creados
+pueden tener filas `MesocicloCarga` reales con trabajo de un entrenador, y borrar la tabla es
+una operación difícil de revertir que no aporta nada a este cambio (nadie la lee ya, con o
+sin la columna). Si más adelante se decide limpiar la tabla, es una migración aparte,
+explícita y coordinada, no un efecto colateral de este ADR.
+
+**Qué no resuelve.** Sigue habiendo dos caminos de creación de plan conviviendo: el wizard
+manual (pasos 1-8, produce `MacrocicloSemana` con series/reps/intensidad agregados) y
+`/macrociclo/[id]/generar` (motor completo, produce `Prescripcion` por ejercicio con
+`cargaKg`/`porcentajeRm`/`rirObjetivo`). Este ADR hace que el paso 7 deje de ser un tercer
+sistema desconectado, pero no decide si el wizard manual converge hacia el motor de
+`/generar` — esa es una decisión de arquitectura más grande, ya señalada como riesgo en
+`docs/PLAN-MAESTRO.md` §19.5, que queda fuera de este cambio.
+
+Tampoco hay recálculo automático hacia atrás: si el entrenador cambia el objetivo de bloque
+en el paso 7 después de haber aplicado sugerencias en el paso 6 ("Semanas"), las semanas ya
+configuradas no se recalculan solas — el mismo principio que R-11/R-12 (el sistema nunca
+sobrescribe solo una decisión ya tomada). El editor lo advierte explícitamente.
+
+**Fecha.** 2026-09-08. **Estado.** Implementado. Cobertura:
+`lib/planificacion/objetivo-bloque.test.ts`.
+
+---
+
+## ADR-48 · Cierre de brechas "antes/durante/después" identificadas en revisión de flujo
+
+**Contexto.** Revisión del flujo completo del macrociclo desde la perspectiva de un
+entrenador de fuerza (evaluar → planificar → ejecutar → cerrar), pedida explícitamente para
+identificar qué falta, no para inventar features nuevas. Encontró: (1) sin forma de marcar
+una sesión como no realizada ni de reportar RPE de sesión, pese a que R-13 (disponibilidad)
+y R-10 (deload reactivo) ya estaban escritas y probadas (`lib/progresion/reglas.ts`,
+`lib/progresion/deload.ts`) pero nunca se llamaban desde el servicio; (2) sin sustitución de
+ejercicio en ningún punto del flujo (ni planificación, ni sesión en vivo); (3) sin "sesión de
+hoy" — para registrar entrenamiento había que buscarla a mano entre hasta 20 sesiones
+mezcladas con las ya hechas; (4) cerrar un macrociclo era solo cambiar un estado, sin ningún
+resumen (M9 no tenía ninguna vista, pese a que los datos para tonelaje/adherencia/RM ya
+existían); (5) dos caminos de crear el plan (wizard manual vs. `/generar`) sin ninguna
+señal en pantalla de que generar el plan **sobrescribe** un objetivo de bloque ya ajustado a
+mano (confirmado leyendo `services/planificacion.service.ts publicarPlan`: hace upsert por
+`orden` sin leer lo que el wizard ya había guardado).
+
+**Decisión.**
+- `lib/ejecucion.ts` (nuevo): codifica el motivo de omisión de una sesión con un prefijo
+  (`[fatiga]`, `[lesion]`, `[logistica]`, `[otro]`) dentro del único campo de texto libre que
+  ya existía (`SesionRealizada.motivoOmision`) — sin migración de schema. Es lo que permite
+  distinguir "fatiga" de forma fiable para el criterio `sesionesOmitidasPorFatiga` del deload
+  reactivo, sin adivinar a partir de texto libre.
+- `services/ejecucion.service.ts omitirSesionRealizada` + `actions/ejecucion.ts
+  omitirSesionAction`: marca la `SesionRealizada`/`SesionPlanificada` como omitida. RPE de
+  sesión se agregó como parámetro de `completarSesionAction` (el campo `rpeSesion` ya
+  existía en el modelo, solo faltaba el input).
+- `services/progresion.service.ts evaluarDisponibilidadPorSesion` /
+  `evaluarDeloadReactivoPorSesion`: **conectan** las reglas puras ya existentes
+  (`evaluarDisponibilidad`, `evaluarDeloadReactivo`) al ciclo de ejecución, disparadas desde
+  `completarSesionAction`/`omitirSesionAction`. Ventanas de agregación documentadas en el
+  propio código (RPE: últimas 3 sesiones completas del atleta; e1RM/RIR: la sesión actual,
+  mismo criterio de "señal reciente" que ya usa R-13 con 2 sesiones; sesiones omitidas: del
+  microciclo actual) porque R-10 no las fija con precisión milimétrica.
+  `aceptarAjustePropuesto` se amplió para `alcance: "semana"` + `tipo: "deload"`: marca esa
+  semana `esDeload=true` con el recorte de volumen máximo (R-10), pero **no** regenera
+  `SesionPlanificada`/`Prescripcion` ya publicadas — el propio `AjustesList` se lo indica al
+  entrenador (usar "Generar plan automáticamente" de nuevo si hace falta que se refleje).
+- Sustitución de ejercicio en vivo (`components/entrenamiento/RegistroSesion.tsx`): el
+  atleta/entrenador puede cambiar, antes de la primera serie, a otro ejercicio del mismo
+  patrón de movimiento. No requirió cambios de schema: `SerieRealizada.ejercicioId` ya era
+  independiente de `prescripcionId`. La carga sugerida se limpia al sustituir (no aplica a
+  otro ejercicio); `prescripcionId` se conserva apuntando al ejercicio original, así que la
+  evaluación de rendimiento compara reps del sustituto contra objetivos del prescrito —
+  degradación aceptada conscientemente, no un bug.
+- `obtenerProximaSesionPlanificada` (nuevo): primera `SesionPlanificada` en estado
+  `planificada`, mostrada como tarjeta destacada en el dashboard y en el detalle del
+  macrociclo; el listado completo de sesiones pasó a un `<details>` colapsado.
+- `obtenerResumenMacrociclo` + `components/macrociclo/ResumenMacrociclo.tsx` (M9 mínimo
+  viable, no el módulo de análisis completo del plan): RM al inicio (leído de `RmVigente`
+  vigente en `fechaInicio`, no del `rmSnapshot` JSON legado) vs. RM actual, adherencia
+  (completas/parciales/omitidas/pendientes sobre las que ya deberían haberse hecho),
+  tonelaje (`Σ cargaKg × repeticiones` de `SerieRealizada`), y conteo de `AjustePropuesto`
+  por estado. Visible en el detalle del macrociclo en cualquier momento, no solo al cerrar.
+- Aviso explícito en `/macrociclo/[id]/generar` y en el detalle del macrociclo sobre el
+  riesgo real de sobrescritura entre wizard manual y generador automático (ver hallazgo (5)
+  arriba). No se resolvió el problema de fondo — converger los dos caminos sigue siendo una
+  decisión de arquitectura aparte, señalada en `PLAN-MAESTRO.md` §19.5 — solo se dejó de
+  ocultarlo.
+- `/atletas`: badge de sesiones omitidas en las últimas 2 semanas por atleta, agregado en
+  memoria (no hay `personaId` directo en `SesionPlanificada`).
+
+**Fecha.** 2026-09-08. **Estado.** Implementado. Cobertura: `lib/ejecucion.test.ts`; el resto
+depende de datos de ejecución reales (services con Prisma) y se valida con los tests de
+integración existentes de `lib/progresion/reglas.test.ts`/`deload.test.ts` sobre las mismas
+funciones puras ahora conectadas.
+
+---
+
+## ADR-49 · El motor deja de elegir ejercicios y calcular cargas: WOD en texto libre
+
+**Contexto.** Al usar `/generar` con un macrociclo real, el motor rechazaba publicar por un
+falso positivo de validación (`#1 La suma de semanas de periodos/mesociclos no coincide con
+el total`) — corregido aparte en esta misma sesión (`semanasEnRango` en
+`lib/planificacion/validacion.ts` dividía días/7 con `Math.round`, que infravalora la última
+semana calendario cuando el rango total del macrociclo no es múltiplo exacto de 7 días;
+ahora cuenta por índice de semana relativo a `fechaInicio`, igual que
+`generarSemanasRango`). Al revisar el resultado, el entrenador pidió explícitamente no poder
+modificar los ejercicios que el motor elegía en esa misma vista, y planteó el motivo de
+fondo: **es el entrenador quien decide qué ejercicios entran en cada sesión** (el WOD), no un
+catálogo de 6 ejercicios genéricos con una heurística de selección automática
+(`seleccionarEjerciciosPorPatron`, R-01).
+
+**Decisión.** Se preguntó explícitamente qué hacer con el cálculo automático de %RM/e1RM/
+ajustes (R-13/R-10), que dependía de que cada serie apuntara a un `ejercicioId` prescrito. El
+entrenador eligió la opción sin cálculo por ejercicio, con la condición de que se le siga
+mostrando toda la información necesaria para programar el WOD él mismo:
+
+- El motor (`lib/planificacion/motor.ts`, `prescripcion.ts`) ya no llama a
+  `seleccionarEjerciciosPorPatron` ni a `calcularPrescripcion`: cada `SesionPropuesta` sale
+  con `prescripciones: []` y un nuevo campo `patrones: string[]` (qué patrones de movimiento
+  tocan esa sesión, repartidos por `agruparPatronesPorDia`, mismo criterio R-02 de antes pero
+  sin atarlo a un ejercicio concreto del catálogo). `calcularIntensidadObjetivoPct`/
+  `calcularSeriesObjetivo`/`calcularProgresoEnBloque` **se conservaron** — no son código
+  muerto, los sigue usando `sugerencia-semana.ts` para el paso "Semanas" del asistente manual,
+  que no se tocó.
+- `SesionPlanificada.wod` (nuevo campo `TEXT` nullable): el entrenador escribe aquí el WOD
+  real. Se guarda con una acción aparte (`guardarWodAction`), independiente del registro de
+  series — no bloquea completar la sesión.
+- `/entrenamiento/[sesionPlanificadaId]` muestra, antes del WOD, un panel de contexto con
+  todo lo que el mesociclo ya calcula: objetivo de bloque, zona de %1RM/reps/RIR, progresión,
+  rango de series por patrón, tipo de microciclo y si es semana de descarga (con sus
+  factores). Es la misma información que `ObjetivoBloqueEditor`/`ResumenMacrociclo` ya
+  muestran — no se inventó un cálculo nuevo, solo se reexpuso donde hacía falta.
+- El registro de series pasa a ser libre: el entrenador agrega cualquier ejercicio del
+  catálogo activo a la sesión (no solo alternativas del "mismo patrón" como en ADR-anterior de
+  sustitución) y registra series sin un objetivo fijo de series/reps/carga — `registrarSerie`
+  ya aceptaba `prescripcionId: null`, no hizo falta tocar el modelo de ejecución.
+- `GeneradorPlan.tsx` (vista de `/generar`) deja de mostrar `Ejercicio #N × reps @ kg` por
+  sesión — muestra los patrones a cubrir. La tabla de mesociclos (zona %1RM/reps/RIR) se
+  mantiene: sigue siendo la referencia real para programar el WOD.
+
+**Lo que esto rompe a propósito (aceptado explícitamente por el entrenador).** R-13
+(autorregulación por ejercicio) y R-10 (deload reactivo, criterio de caída de e1RM) dejan de
+dispararse para sesiones generadas después de este cambio, porque no hay `ejercicioId`
+prescrito al que atarlas — la evaluación ya tenía un `if (!prescripcionId) continue` (ver
+`services/progresion.service.ts`), así que degrada sin romper, simplemente no genera
+propuestas para esas sesiones. R-05/R-06 (cálculo de carga desde el RM) quedan documentadas
+como "en pausa" en `docs/PLAN-MAESTRO.md`, no eliminadas: si en el futuro se quiere volver a
+un cálculo por ejercicio (opcional, sobre el WOD ya escrito), la lógica pura
+(`calcularPrescripcion`, `seleccionarEjerciciosPorPatron`) se puede recuperar del historial de
+`lib/planificacion/prescripcion.ts` — se retiró del archivo por quedar sin ningún llamador,
+no porque la matemática estuviera mal.
+
+**Migración.** `prisma/migrations/20260908160046_sesion_planificada_wod`: `ALTER TABLE
+SesionPlanificada ADD COLUMN wod TEXT NULL`. Aplicada a mano contra la base de datos local
+(`prisma db execute` + `prisma migrate resolve --applied`) porque `prisma migrate dev`
+reportó drift de checksum en migraciones de agosto ya aplicadas y pedía resetear la base de
+datos local — **no se reseteó nada**; ese drift es anterior a esta sesión y queda sin tocar,
+documentado aquí para que quien lo investigue sepa que no es efecto de este cambio.
+
+**Fecha.** 2026-09-08. **Estado.** Superado el mismo día por ADR-50 — ver abajo. Cobertura en
+su momento: `lib/planificacion/prescripcion.test.ts`, `lib/planificacion/motor.test.ts`,
+`services/planificacion.service.test.ts` (integración, ya retirados).
+
+---
+
+## ADR-50 · Se retira `/generar` y el motor de periodización: sesiones simples al activar
+
+**Contexto.** Tras ADR-49, `/generar` seguía calculando periodos/etapas/mesociclos con
+`objetivoBloque`/zona y creando las `SesionPlanificada` — pero esa periodización **ya la
+crea el asistente manual** (`guardarPeriodizacion`, paso "Semanas", con su `frecuencia` por
+semana) desde antes de ADR-49. Con las prescripciones vacías, lo único que `/generar`
+aportaba de más era: (a) volver a derivar `objetivoBloque`/zona desde la plantilla del motor
+— redundante con lo que el asistente ya guarda y editable en el paso "Carga"
+(`ObjetivoBloqueEditor`, ADR-47) — y de hecho la fuente del riesgo de sobrescritura que
+ADR-48 ya había señalado como advertencia; y (b) crear las `SesionPlanificada`. El
+entrenador lo dijo directo: activar el macrociclo no debería requerir "generar un plan" en
+absoluto — solo activarlo, y desde ahí ir reportando semana a semana con el WOD.
+
+**Decisión.**
+- `services/macrociclo.service.ts crearSesionesPlanificadas`: crea una `SesionPlanificada`
+  por cada unidad de `frecuencia` ya guardada en cada `MacrocicloSemana` (sin periodización,
+  sin prescripción, sin motor). Se llama automáticamente dentro de `activarMacrociclo`,
+  después de pasar el macrociclo a `estado: "activo"`. Es idempotente (cuenta las sesiones
+  que ya existen por semana y solo crea las que faltan), pensado para poder llamarse de
+  nuevo en el futuro si cambia la disponibilidad (no se implementó ese disparador todavía —
+  hoy solo se llama al activar).
+- Se retiraron por completo: `app/macrociclo/[id]/generar/` (ruta),
+  `components/macrociclo/GeneradorPlan.tsx`, `actions/planificacion.ts`,
+  `services/planificacion.service.ts` (+ test), `lib/planificacion/motor.ts` (+ test),
+  `lib/planificacion/validacion.ts` (+ test). No se dejaron enlazados ni alcanzables por
+  URL: el propio entrenador señaló que una vista de "generar" que ya no aporta nada seguía
+  siendo una fuente de confusión, no solo una opción de más.
+- `lib/planificacion/prescripcion.ts` quedó reducido a `calcularProgresoEnBloque`/
+  `calcularIntensidadObjetivoPct`/`calcularSeriesObjetivo` — lo único que sigue usando
+  `lib/planificacion/sugerencia-semana.ts` para las sugerencias del paso "Semanas" del
+  asistente, que no se tocó. `lib/planificacion/tipos.ts` quedó reducido a `NivelAtleta`
+  (lo único que `perfil.ts`/`PasoPerfil.tsx` seguían necesitando de ahí).
+- El registro de sesión (`components/entrenamiento/RegistroSesion.tsx`) perdió el registro
+  estructurado por ejercicio que ADR-49 había introducido (agregar ejercicio, carga/reps/RIR
+  por serie): el entrenador lo pidió explícitamente fuera — el WOD en texto es el registro,
+  no hace falta una segunda forma numérica de registrar lo mismo. La pantalla queda en:
+  contexto (objetivo de bloque/zona, igual que antes) + WOD + RPE de sesión + completar/
+  omitir.
+
+**Lo que no se tocó a propósito.** `services/ejecucion.service.ts registrarSerie` y
+`POST /api/ejecucion/serie` (TASK-038, registro rápido con idempotencia, pensado para un
+cliente externo/móvil) siguen existiendo — no dependen de la UI que se simplificó y no
+estorban. `actions/ejecucion.ts registrarSerieAction` quedó sin ningún llamador dentro de la
+app (la UI ya no lo usa) pero se conservó: es un envoltorio delgado sobre `registrarSerie`
+que no arrastra nada más, por si se retoma un registro estructurado opcional más adelante.
+
+**Fecha.** 2026-09-08. **Estado.** Implementado. Cobertura: suite completa en verde
+(`npx vitest run`, 332 tests) tras el retiro; sin test dedicado nuevo porque
+`crearSesionesPlanificadas` es un helper de infraestructura simple (creación idempotente por
+conteo), no una regla de dominio con casos de borde no triviales.
+
+---
+
+## ADR-51 · "Resumen del macrociclo" pierde 2 tarjetas muertas; RM opcional sin serie completa
+
+**Contexto.** El entrenador probó "Resumen del macrociclo" (ADR-48) tras el retiro del
+registro serie-por-serie (ADR-50) y preguntó de dónde salían los números: "Tonelaje
+registrado" y "Ajustes propuestos" mostraban 0 siempre, y "Evolución del RM" mostraba +0% en
+los 6 ejercicios del seed. La causa: las tres dependían de `SerieRealizada` con
+`ejercicioId`/`cargaKg`/`repeticiones`/`rir` — exactamente lo que ADR-50 dejó de generar por
+defecto (el WOD es texto libre). No es un bug de cálculo: son tarjetas que, con el flujo
+actual, no tienen ninguna fuente de datos posible.
+
+**Decisión.**
+- Se retiraron `tonelajeKg` y `ajustes` de `ResumenMacrociclo` (tipo, `obtenerResumenMacrociclo`
+  en `services/macrociclo.service.ts`, y las dos tarjetas correspondientes en
+  `components/macrociclo/ResumenMacrociclo.tsx`) — junto con las queries que ya no hacían
+  falta (`ajustePropuesto.groupBy`, `serieRealizada.findMany`). Quedan "Evolución del RM" y
+  "Adherencia" (esta última sigue siendo real: se basa en `estado` de `SesionPlanificada`, que
+  el flujo de WOD sí actualiza).
+- El tooltip de "Evolución del RM" ahora dice explícitamente que **no** se mueve solo con
+  cada sesión — solo con un test de RM nuevo o con el campo opcional descrito abajo — para
+  que un 0% no se lea como "no hay progreso" cuando en realidad es "nadie se lo dijo al
+  sistema".
+- **"Posible marca nueva" (opcional)**, en la pantalla de cada sesión
+  (`components/entrenamiento/RegistroSesion.tsx MarcaPersonalPanel`): el entrenador elige uno
+  de los ejercicios del catálogo que admiten %1RM (los mismos 6 del test de RM, no
+  variantes de texto libre del WOD), pone el peso y las repeticiones de la serie más pesada o
+  más cercana al fallo que hizo el atleta ese día, y el campo explica en el propio tooltip qué
+  poner ahí y para qué sirve (cuantas menos repeticiones, más precisa la estimación; ideal
+  1-10) — pedido explícito del entrenador: que el campo se autoexplique, no solo que exista.
+- Para que ese campo pudiera calcular algo, se corrigió `services/ejecucion.service.ts
+  registrarSerie`: antes, sin RIR reportado, no calculaba ningún e1RM (`estimarE1rmConRir`
+  exige RIR). Ahora, sin RIR, cae a `estimarRm` — el mismo estimador primario que usa un test
+  de RM (D-02/ADR-03: nunca `max()` entre fórmulas, ventana de validez, confianza según
+  repeticiones) — y respeta su regla de "no utilizable" (>15 repeticiones efectivas): en ese
+  caso no actualiza nada y se lo dice al entrenador. Con RIR reportado, el camino existente
+  (`estimarE1rmConRir`, F-03) no cambió. El resto del flujo ya existía sin tocar: registrar la
+  serie llama a `actualizarRmVigenteSiSupera`, que nunca baja el RM vigente, solo lo mejora.
+
+**Lo que no se implementó.** No se resucitaron "Tonelaje" ni "Ajustes propuestos": harían
+falta series completas con RIR consistentes para tener señal real, que es exactamente el
+registro estructurado que el entrenador pidió quitar en ADR-50. Si en el futuro se quiere ese
+nivel de detalle, es una decisión aparte, no un efecto colateral de este campo opcional.
+
+**Fecha.** 2026-09-08. **Estado.** Implementado. Cobertura:
+`services/ejecucion.service.test.ts` (2 casos nuevos: estimación sin RIR que sí actualiza
+RmVigente, y repeticiones no utilizables que no actualizan nada).
+
+---
+
 ## Preguntas abiertas del plan aún sin resolver
 
 Ver `docs/PLAN-MAESTRO.md` §19.3 para el detalle. Estado tras esta sesión:
@@ -1215,7 +1629,7 @@ Ver `docs/PLAN-MAESTRO.md` §19.3 para el detalle. Estado tras esta sesión:
 | Q-01 | ¿Multi-entrenador o un solo entrenador? | Parcial — ahora puede haber varias cuentas `role: "entrenador"` (ADR-26), pero sin aislamiento de datos entre ellas |
 | Q-02 | ¿Quién registra el entrenamiento? | **Resuelto**: el entrenador |
 | Q-03 | ¿Se recalibran los coeficientes de masa corporal? | Sin resolver (ADR-16) |
-| Q-04 | ¿Direcciones en minutos o se simplifican? | Sin resolver (ADR-24) |
+| Q-04 | ¿Direcciones en minutos o se simplifican? | **Resuelto** (ADR-47): se simplifican — el paso 7 pasa a editar objetivo de bloque (%1RM/reps/RIR/series por patrón), `MesocicloCarga` queda sin escribir |
 | Q-05 | ¿Qué ejercicios entran más allá de los 6 actuales? | Sin resolver — catálogo ampliado con semántica (`Ejercicio.patron` etc.), pero el conjunto de 6 ejercicios no creció |
 | Q-06 | ¿Autenticación real de persona? | **Resuelto** (ADR-25) |
 | Q-07 | ¿Qué duraciones de macrociclo soportar? | Resuelto de forma general — el motor no está atado a duraciones fijas; probado en 8/12/16/24 semanas (`lib/planificacion/motor.test.ts`) |

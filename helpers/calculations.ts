@@ -244,6 +244,104 @@ export function getWaistCircumferenceClassification(
   };
 }
 
+// ---------------------------------------------------------------------------
+// VO2max: clasificación por edad y sexo
+// ---------------------------------------------------------------------------
+//
+// Tabla de referencia de uso extendido en la industria del fitness (p. ej.
+// reproducida por ACE, Topend Sports y certificaciones de entrenador
+// personal), derivada de normas históricas de varias fuentes sin un único
+// estudio primario citable. Se presenta como referencia orientativa, igual
+// que el índice de fuerza interno (F-12, docs/PLAN-MAESTRO.md) — no como un
+// estándar clínico. Umbrales en ml/kg/min, límite inferior de cada categoría.
+type Vo2maxCategoriaLabel =
+  | "Muy pobre"
+  | "Pobre"
+  | "Debajo del promedio"
+  | "Promedio"
+  | "Sobre el promedio"
+  | "Bueno"
+  | "Excelente";
+
+const VO2MAX_CATEGORIAS: Vo2maxCategoriaLabel[] = [
+  "Muy pobre",
+  "Pobre",
+  "Debajo del promedio",
+  "Promedio",
+  "Sobre el promedio",
+  "Bueno",
+  "Excelente",
+];
+
+// Cada tupla: [edadMaxima, umbrales ascendentes de las 6 fronteras entre
+// las 7 categorías]. La última fila (Infinity) cubre 65+.
+const VO2MAX_UMBRALES_HOMBRE: [number, number[]][] = [
+  [25, [30, 37, 42, 47, 52, 60]],
+  [35, [30, 35, 40, 43, 49, 56]],
+  [45, [26, 31, 35, 39, 43, 51]],
+  [55, [25, 29, 32, 36, 39, 45]],
+  [65, [22, 26, 30, 32, 36, 41]],
+  [Infinity, [20, 22, 26, 29, 33, 37]],
+];
+
+const VO2MAX_UMBRALES_MUJER: [number, number[]][] = [
+  [25, [28, 33, 38, 42, 47, 56]],
+  [35, [26, 31, 35, 39, 45, 52]],
+  [45, [22, 27, 31, 34, 38, 45]],
+  [55, [20, 25, 28, 31, 34, 40]],
+  [65, [18, 22, 25, 28, 32, 37]],
+  [Infinity, [17, 19, 22, 25, 28, 32]],
+];
+
+function normalizarSexoVo2max(sexo?: string | null): "hombre" | "mujer" | null {
+  const normalizado = normalizeHealthSexo(sexo);
+  if (normalizado === "masculino") return "hombre";
+  if (normalizado === "femenino") return "mujer";
+  return null;
+}
+
+function colorParaCategoriaVo2max(categoria: Vo2maxCategoriaLabel): RiskColor {
+  if (categoria === "Muy pobre" || categoria === "Pobre") return "rojo";
+  if (categoria === "Debajo del promedio" || categoria === "Promedio") {
+    return "amarillo";
+  }
+  return "verde";
+}
+
+/**
+ * Clasifica un VO2max (ml/kg/min) contra la tabla de normas por edad y sexo.
+ * Requiere edad y sexo reconocibles; sin ellos no hay tabla contra la cual
+ * comparar y se devuelve "Sin datos" en vez de adivinar.
+ */
+export function getVO2MaxClassification(
+  vo2max: number,
+  edad?: number | null,
+  sexo?: string | null,
+): HealthClassification {
+  const sinDatos: HealthClassification = { label: "Sin datos", color: "amarillo" };
+
+  if (!Number.isFinite(vo2max) || vo2max <= 0) return sinDatos;
+  if (typeof edad !== "number" || !Number.isFinite(edad) || edad <= 0) {
+    return sinDatos;
+  }
+
+  const sexoNormalizado = normalizarSexoVo2max(sexo);
+  if (!sexoNormalizado) return sinDatos;
+
+  const tabla =
+    sexoNormalizado === "hombre" ? VO2MAX_UMBRALES_HOMBRE : VO2MAX_UMBRALES_MUJER;
+  const fila = tabla.find(([edadMaxima]) => edad <= edadMaxima) ?? tabla[tabla.length - 1];
+  const umbrales = fila[1];
+
+  let indiceCategoria = 0;
+  for (const umbral of umbrales) {
+    if (vo2max >= umbral) indiceCategoria += 1;
+  }
+
+  const categoria = VO2MAX_CATEGORIAS[indiceCategoria];
+  return { label: categoria, color: colorParaCategoriaVo2max(categoria) };
+}
+
 export function getPorcentajeMasa(
   persona: Pick<PersonaMetrics, "sexo">,
   ejercicio: EjercicioMasa,

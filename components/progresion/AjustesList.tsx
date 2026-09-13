@@ -99,6 +99,23 @@ function AjusteCard({
 
       <p className="text-sm text-text-secondary">{ajuste.justificacion}</p>
 
+      {ajuste.tipo === "deload" ? (
+        <p className="text-xs text-text-tertiary">
+          Aceptar esto marca la próxima semana como descarga (−50% volumen,
+          intensidad igual). Si esa semana ya tiene sesiones generadas por el
+          motor automático, entra al macrociclo y usa &ldquo;Generar plan
+          automáticamente&rdquo; de nuevo para que el recorte se refleje en
+          ellas — aceptar aquí no las recalcula solo.
+        </p>
+      ) : null}
+      {ajuste.tipo === "revisar_disponibilidad" ? (
+        <p className="text-xs text-text-tertiary">
+          Esto no es un problema de carga: es una señal de que conviene
+          hablar con el atleta sobre por qué está faltando a las sesiones
+          antes de tocar el plan.
+        </p>
+      ) : null}
+
       <details className="text-xs text-text-tertiary">
         <summary className="cursor-pointer">Ver evidencia</summary>
         <pre className="mt-2 overflow-x-auto rounded-xl bg-bg-main p-3 dark:bg-bg-subtle">

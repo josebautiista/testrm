@@ -26,10 +26,7 @@ import {
   modoCalendarioDe,
   type PerfilDeportivo,
 } from "@/lib/planificacion/perfil";
-import {
-  type CargaMesocicloInputData,
-  validarCargaMesociclo,
-} from "@/lib/mesociclo-carga";
+import { validarObjetivoBloque } from "@/lib/planificacion/objetivo-bloque";
 
 export type AuditContext = {
   userType: "persona" | "admin";
@@ -1004,6 +1001,11 @@ export async function activarMacrociclo({
     data: { estado: "activo" },
   });
 
+  // ADR-50: activar ya no depende de "generar plan" — las sesiones son
+  // simples huecos para el WOD, uno por cada sesión de la `frecuencia` que
+  // el entrenador ya definió al guardar la periodización.
+  await crearSesionesPlanificadas(id, personaId);
+
   await auditarMacrociclo({
     macrocicloId: id,
     personaId,
@@ -1012,6 +1014,36 @@ export async function activarMacrociclo({
   });
 
   return actualizado;
+}
+
+/**
+ * ADR-50 · Crea las `SesionPlanificada` que falten a partir de la
+ * `frecuencia` ya guardada en cada `MacrocicloSemana` — sin periodización
+ * ni prescripción por ejercicio (eso lo decide el entrenador al escribir el
+ * WOD, ADR-49). Idempotente: no duplica sesiones ya creadas.
+ */
+export async function crearSesionesPlanificadas(macrocicloId: number, personaId: number) {
+  const [semanas, persona] = await Promise.all([
+    prisma.macrocicloSemana.findMany({
+      where: { macrocicloId },
+      select: { id: true, frecuencia: true },
+      orderBy: { numeroSemana: "asc" },
+    }),
+    prisma.persona.findUnique({ where: { id: personaId }, select: { minutosPorSesion: true } }),
+  ]);
+
+  const duracionEstimadaMin = persona?.minutosPorSesion ?? 60;
+
+  for (const semana of semanas) {
+    const existentes = await prisma.sesionPlanificada.count({ where: { semanaId: semana.id } });
+    const faltantes = Math.max(0, semana.frecuencia - existentes);
+
+    for (let i = 0; i < faltantes; i++) {
+      await prisma.sesionPlanificada.create({
+        data: { semanaId: semana.id, orden: existentes + i + 1, duracionEstimadaMin },
+      });
+    }
+  }
 }
 
 export async function obtenerMacrocicloPorId(id: number) {
@@ -1039,7 +1071,6 @@ export async function obtenerMacrocicloPorId(id: number) {
         orderBy: { orden: "asc" },
         include: {
           semanas: { orderBy: { numeroSemana: "asc" } },
-          carga: true,
         },
       },
       semanas: {
@@ -1111,7 +1142,8 @@ export async function obtenerCargaMesociclo(mesocicloId: number) {
   });
 }
 
-export async function guardarCargaMesociclo({
+/** ADR-47 · Reemplaza a `guardarCargaMesociclo` (minutos × direcciones, retirado). */
+export async function guardarObjetivoBloqueMesociclo({
   macrocicloId,
   personaId,
   mesocicloId,
@@ -1121,59 +1153,188 @@ export async function guardarCargaMesociclo({
   macrocicloId: number;
   personaId: number;
   mesocicloId: number;
-  data: CargaMesocicloInputData;
+  data: unknown;
   context: AuditContext;
 }) {
   const mesociclo = await prisma.macrocicloMesociclo.findFirst({
     where: { id: mesocicloId, macrocicloId, macrociclo: { personaId } },
-    include: {
-      macrociclo: { select: { id: true, personaId: true } },
-      semanas: true,
-    },
   });
 
   if (!mesociclo) {
     throw new Error("Mesociclo no encontrado.");
   }
 
-  const semanas = mesociclo.semanas.map((s) => ({
-    numeroSemana: s.numeroSemana,
-    frecuencia: s.frecuencia,
-  }));
-
-  const validado = validarCargaMesociclo(data, semanas);
+  const validado = validarObjetivoBloque(data);
   if (!validado.ok) {
     throw new Error(validado.error);
   }
 
-  const actualizado = await prisma.mesocicloCarga.upsert({
-    where: { mesocicloId },
-    create: {
-      mesocicloId,
-      tiempoSesionMin: validado.data.tiempoSesionMin,
-      direcciones: validado.data.direcciones as Prisma.InputJsonValue,
-      volumen: validado.data.volumen as Prisma.InputJsonValue,
-      microciclos: validado.data.microciclos as Prisma.InputJsonValue,
-      sesiones: validado.data.sesiones as Prisma.InputJsonValue,
-    },
-    update: {
-      tiempoSesionMin: validado.data.tiempoSesionMin,
-      direcciones: validado.data.direcciones as Prisma.InputJsonValue,
-      volumen: validado.data.volumen as Prisma.InputJsonValue,
-      microciclos: validado.data.microciclos as Prisma.InputJsonValue,
-      sesiones: validado.data.sesiones as Prisma.InputJsonValue,
+  const actualizado = await prisma.macrocicloMesociclo.update({
+    where: { id: mesocicloId },
+    data: {
+      objetivoBloque: validado.data.objetivoBloque,
+      intensidadMinPct: validado.data.intensidadMinPct,
+      intensidadMaxPct: validado.data.intensidadMaxPct,
+      repsMin: validado.data.repsMin,
+      repsMax: validado.data.repsMax,
+      rirObjetivo: validado.data.rirObjetivo,
+      progresion: validado.data.progresion,
+      seriesSemanalesPorPatron: validado.data
+        .seriesSemanalesPorPatron as Prisma.InputJsonValue,
     },
   });
 
   await auditarMacrociclo({
     macrocicloId,
     personaId,
-    action: "carga_mesociclo_guardada",
+    action: "objetivo_bloque_mesociclo_guardado",
     metadata: { mesocicloId },
     before: undefined,
-    after: validado.data as Record<string, unknown>,
+    after: validado.data as unknown as Record<string, unknown>,
     context,
   });
 
   return actualizado;
+}
+
+/**
+ * "Sesión de hoy": la próxima `SesionPlanificada` aún no registrada,
+ * ordenada por semana/orden. Antes había que abrir el detalle del
+ * macrociclo y buscarla a mano entre hasta 20 sesiones ya mezcladas con las
+ * ya hechas — esto es lo que se muestra destacado arriba de esa lista y en
+ * el dashboard.
+ */
+export async function obtenerProximaSesionPlanificada(macrocicloId: number) {
+  return prisma.sesionPlanificada.findFirst({
+    // Incluye "parcial": abrir la pantalla de registro ya la marca parcial
+    // (RegistroSesion crea la SesionRealizada al montar), aunque el
+    // entrenador no haya llegado a escribir el WOD ni completarla. Filtrar
+    // solo por "planificada" hacía que la sesión desapareciera de esta
+    // tarjeta apenas se abría una vez — justo cuando más falta hacía
+    // encontrarla de nuevo.
+    where: { semana: { macrocicloId }, estado: { in: ["planificada", "parcial"] } },
+    orderBy: [{ semana: { numeroSemana: "asc" } }, { orden: "asc" }],
+    select: {
+      id: true,
+      orden: true,
+      wod: true,
+      estado: true,
+      semana: { select: { numeroSemana: true, fechaInicio: true } },
+    },
+  });
+}
+
+export type ResumenMacrociclo = {
+  rango: { desde: Date; hasta: Date };
+  rm: Array<{
+    ejercicioId: number;
+    ejercicioNombre: string;
+    inicioKg: number | null;
+    actualKg: number | null;
+    deltaPct: number | null;
+  }>;
+  adherencia: {
+    total: number;
+    realizadas: number;
+    parciales: number;
+    omitidas: number;
+    pendientes: number;
+    debidas: number;
+    porcentajeAdherencia: number | null;
+  };
+};
+
+/**
+ * M9 (mínimo viable) · Resumen del macrociclo: qué pasó con la fuerza y la
+ * adherencia desde que se armó el plan. No existía ninguna vista de esto —
+ * cerrar un macrociclo era solo cambiar un estado, sin ningún dato que
+ * justifique cómo armar el siguiente bloque.
+ *
+ * El RM "al inicio" se lee de `RmVigente` vigente en `fechaInicio` (no del
+ * `rmSnapshot` JSON legado): es la fuente que el propio proyecto documenta
+ * como autoritativa (ADR de RmVigente), y permite reconstruir el valor
+ * histórico exacto gracias a que es append-only.
+ *
+ * ADR-51: "tonelaje registrado" y "ajustes propuestos" se retiraron de este
+ * resumen — dependían de `SerieRealizada` con `ejercicioId`/`rir`, que el
+ * registro de sesión ya no genera por defecto desde ADR-50 (el WOD es
+ * texto libre). Mostrar esos dos en 0 siempre era más confuso que útil.
+ */
+export async function obtenerResumenMacrociclo(
+  macrocicloId: number,
+): Promise<ResumenMacrociclo> {
+  const macrociclo = await prisma.macrociclo.findUniqueOrThrow({
+    where: { id: macrocicloId },
+    select: { id: true, personaId: true, fechaInicio: true, fechaFin: true },
+  });
+
+  const [rmInicio, rmActual, sesiones] = await Promise.all([
+    prisma.rmVigente.findMany({
+      where: {
+        personaId: macrociclo.personaId,
+        validoDesde: { lte: macrociclo.fechaInicio },
+        OR: [{ validoHasta: null }, { validoHasta: { gt: macrociclo.fechaInicio } }],
+      },
+      select: { ejercicioId: true, valorKg: true, ejercicio: { select: { nombre: true } } },
+    }),
+    prisma.rmVigente.findMany({
+      where: { personaId: macrociclo.personaId, validoHasta: null },
+      select: { ejercicioId: true, valorKg: true, ejercicio: { select: { nombre: true } } },
+    }),
+    prisma.sesionPlanificada.findMany({
+      where: { semana: { macrocicloId } },
+      select: { estado: true, semana: { select: { fechaInicio: true } } },
+    }),
+  ]);
+
+  const inicioPorEjercicio = new Map(rmInicio.map((r) => [r.ejercicioId, r]));
+  const actualPorEjercicio = new Map(rmActual.map((r) => [r.ejercicioId, r]));
+  const ejercicioIds = new Set([...inicioPorEjercicio.keys(), ...actualPorEjercicio.keys()]);
+
+  const rm = [...ejercicioIds]
+    .map((ejercicioId) => {
+      const inicio = inicioPorEjercicio.get(ejercicioId) ?? null;
+      const actual = actualPorEjercicio.get(ejercicioId) ?? null;
+      const deltaPct =
+        inicio && actual && inicio.valorKg > 0
+          ? ((actual.valorKg - inicio.valorKg) / inicio.valorKg) * 100
+          : null;
+      return {
+        ejercicioId,
+        ejercicioNombre:
+          actual?.ejercicio.nombre ?? inicio?.ejercicio.nombre ?? `Ejercicio ${ejercicioId}`,
+        inicioKg: inicio?.valorKg ?? null,
+        actualKg: actual?.valorKg ?? null,
+        deltaPct,
+      };
+    })
+    .sort((a, b) => a.ejercicioNombre.localeCompare(b.ejercicioNombre));
+
+  const hoy = new Date();
+  let realizadas = 0;
+  let parciales = 0;
+  let omitidas = 0;
+  let pendientes = 0;
+  let debidas = 0;
+  for (const s of sesiones) {
+    if (s.estado === "realizada") realizadas++;
+    else if (s.estado === "parcial") parciales++;
+    else if (s.estado === "omitida") omitidas++;
+    else pendientes++;
+    if (s.semana.fechaInicio <= hoy) debidas++;
+  }
+
+  return {
+    rango: { desde: macrociclo.fechaInicio, hasta: macrociclo.fechaFin },
+    rm,
+    adherencia: {
+      total: sesiones.length,
+      realizadas,
+      parciales,
+      omitidas,
+      pendientes,
+      debidas,
+      porcentajeAdherencia: debidas > 0 ? (realizadas / debidas) * 100 : null,
+    },
+  };
 }

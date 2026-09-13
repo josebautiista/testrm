@@ -35,6 +35,8 @@ export default async function EditarMacrocicloPage({
       talla: true,
       cintura: true,
       cadera: true,
+      edad: true,
+      sexo: true,
     },
   });
 

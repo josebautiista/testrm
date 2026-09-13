@@ -12,6 +12,9 @@ import {
   type TipoPeriodo,
   type Vo2maxSnapshot,
   calcularVo2maxLeger,
+  COOPER_DISTANCIA_MINIMA_M,
+  ETAPA_LEGER_MAXIMA,
+  esVo2maxPlausible,
   isMetodoVo2max,
   isObjetivoTipo,
   isTipoMesociclo,
@@ -31,7 +34,7 @@ import {
   guardarPeriodizacion,
   guardarRmSnapshot,
   guardarVo2maxSnapshot,
-  guardarCargaMesociclo,
+  guardarObjetivoBloqueMesociclo,
   guardarPerfilDeportivo,
   guardarCompetencias,
 } from "@/services/macrociclo.service";
@@ -41,7 +44,6 @@ import {
   isNivelAtleta,
   PERFIL_POR_DEFECTO,
 } from "@/lib/planificacion/perfil";
-import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import { combinarResultadosRmMasRecientes } from "@/lib/macrociclo-rm";
 
 function getContext() {
@@ -394,10 +396,20 @@ export async function guardarVo2maxAction(formData: FormData) {
 
   if (metodo === "cooper") {
     const distancia = getNumber(formData, "distanciaMetros");
-    if (!distancia || distancia <= 0) redirectToWizard(cc, id, PASO_WIZARD.vo2max);
-    const valor = (distancia - 504.9) / 44.73;
-    vo2max = { metodo, distanciaMetros: distancia, valor };
-  } else {
+    // La fórmula de Cooper cruza a cero/negativo por debajo de 504.9 m: no es
+    // un caso de baja condición física, es una singularidad de la fórmula.
+    if (!distancia || distancia <= COOPER_DISTANCIA_MINIMA_M) {
+      redirectToWizard(cc, id, PASO_WIZARD.vo2max);
+    }
+    const distanciaFinal = distancia as number;
+    const valor = (distanciaFinal - 504.9) / 44.73;
+    vo2max = {
+      metodo,
+      distanciaMetros: distanciaFinal,
+      valor,
+      fueraDeRango: !esVo2maxPlausible(valor),
+    };
+  } else if (metodo === "leger") {
     const etapa = getNumber(formData, "etapa");
 
     if (!etapa || etapa < 1 || !Number.isInteger(etapa)) {
@@ -405,11 +417,31 @@ export async function guardarVo2maxAction(formData: FormData) {
     }
 
     const etapaFinal = etapa as number;
+    const valor = calcularVo2maxLeger(etapaFinal);
     vo2max = {
       metodo,
       etapa: etapaFinal,
       velocidadKmh: velocidadLegerKmh(etapaFinal),
-      valor: calcularVo2maxLeger(etapaFinal),
+      valor,
+      fueraDeRango:
+        etapaFinal > ETAPA_LEGER_MAXIMA || !esVo2maxPlausible(valor),
+    };
+  } else {
+    // Directo: el atleta ya conoce su VO2max (p. ej. medido en laboratorio o
+    // en un test previo fuera de la app) y no quiere/puede repetir un test de
+    // esfuerzo máximo. No hay fórmula que pueda romperse aquí — solo se
+    // bloquea un valor no positivo, y el rango fisiológico queda como aviso.
+    const valorDirecto = getNumber(formData, "valorDirecto");
+
+    if (!valorDirecto || valorDirecto <= 0) {
+      redirectToWizard(cc, id, PASO_WIZARD.vo2max);
+    }
+
+    const valor = valorDirecto as number;
+    vo2max = {
+      metodo,
+      valor,
+      fueraDeRango: !esVo2maxPlausible(valor),
     };
   }
 
@@ -521,21 +553,6 @@ async function parsePeriodizacionFormData(
   };
 }
 
-export async function guardarPeriodizacionAction(formData: FormData) {
-  const result = await parsePeriodizacionFormData(formData);
-
-  if ("error" in result) {
-    const cc = getString(formData, "cc");
-    const id = getInt(formData, "id");
-    if (!cc || !id) redirect("/atletas");
-    redirect(
-      `/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}&paso=${PASO_WIZARD.semanas}&error=${encodeURIComponent(result.error)}`,
-    );
-  }
-
-  redirectToWizard(result.cc, result.id, PASO_WIZARD.carga);
-}
-
 export async function guardarPeriodizacionSinRedirectAction(
   formData: FormData,
 ): Promise<{ success: true } | { success: false; error: string }> {
@@ -608,16 +625,20 @@ export async function eliminarMacrocicloAction(formData: FormData) {
   redirect(`/dashboard?cc=${encodeURIComponent(cc)}`);
 }
 
-export async function guardarCargaMesocicloAction(
+/** ADR-47 · Reemplaza a `guardarCargaMesocicloAction` (minutos × direcciones, retirado). */
+export async function guardarObjetivoBloqueMesocicloAction(
   formData: FormData,
 ): Promise<{ success: true } | { success: false; error: string }> {
   const cc = getString(formData, "cc");
   const id = getInt(formData, "id");
   const mesocicloId = getInt(formData, "mesocicloId");
-  const cargaRaw = getString(formData, "carga");
+  const objetivoBloqueRaw = getString(formData, "objetivoBloque");
 
-  if (!cc || !id || !mesocicloId || !cargaRaw) {
-    return { success: false, error: "Faltan datos para guardar la carga." };
+  if (!cc || !id || !mesocicloId || !objetivoBloqueRaw) {
+    return {
+      success: false,
+      error: "Faltan datos para guardar el objetivo de bloque.",
+    };
   }
 
   const persona = await getPersona(cc);
@@ -625,23 +646,19 @@ export async function guardarCargaMesocicloAction(
     return { success: false, error: "Persona no encontrada." };
   }
 
-  let carga: CargaMesocicloInputData | null = null;
+  let data: unknown = null;
   try {
-    carga = JSON.parse(cargaRaw) as CargaMesocicloInputData;
+    data = JSON.parse(objetivoBloqueRaw);
   } catch {
     return { success: false, error: "Formato de datos inválido." };
   }
 
-  if (!carga) {
-    return { success: false, error: "Formato de datos inválido." };
-  }
-
   try {
-    await guardarCargaMesociclo({
+    await guardarObjetivoBloqueMesociclo({
       macrocicloId: id,
       personaId: persona.id,
       mesocicloId,
-      data: carga,
+      data,
       context: getContext(),
     });
 
@@ -650,7 +667,7 @@ export async function guardarCargaMesocicloAction(
     const message =
       error instanceof Error
         ? error.message
-        : "No fue posible guardar la carga del mesociclo.";
+        : "No fue posible guardar el objetivo de bloque del mesociclo.";
 
     return { success: false, error: message };
   }

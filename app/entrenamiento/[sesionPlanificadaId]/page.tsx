@@ -2,6 +2,14 @@ import { notFound, redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
 import { RegistroSesion } from "@/components/entrenamiento/RegistroSesion";
+import {
+  OBJETIVO_BLOQUE_LABEL,
+  PROGRESION_LABEL,
+  RANGOS_VOLUMEN,
+  ZONAS_INTENSIDAD,
+} from "@/lib/config/parametros";
+import { resolverObjetivoBloque } from "@/lib/planificacion/fase";
+import { esObjetivoBloque, esProgresionBloque } from "@/lib/planificacion/objetivo-bloque";
 
 export default async function EntrenamientoPage({
   params,
@@ -32,18 +40,32 @@ export default async function EntrenamientoPage({
 
   const sesionPlanificada = await prisma.sesionPlanificada.findUnique({
     where: { id: sesionPlanificadaId },
-    include: {
+    select: {
+      id: true,
+      orden: true,
+      wod: true,
       semana: {
         select: {
           numeroSemana: true,
-          fechaInicio: true,
+          tipoMicrociclo: true,
+          esDeload: true,
+          factorVolumen: true,
+          factorIntensidad: true,
           macrociclo: { select: { id: true, personaId: true } },
+          mesociclo: {
+            select: {
+              tipo: true,
+              objetivoBloque: true,
+              intensidadMinPct: true,
+              intensidadMaxPct: true,
+              repsMin: true,
+              repsMax: true,
+              rirObjetivo: true,
+              progresion: true,
+              seriesSemanalesPorPatron: true,
+            },
+          },
         },
-      },
-      prescripciones: {
-        where: { supersededById: null },
-        include: { ejercicio: { select: { id: true, nombre: true, esDeTiempo: true } } },
-        orderBy: { orden: "asc" },
       },
     },
   });
@@ -51,6 +73,50 @@ export default async function EntrenamientoPage({
   if (!sesionPlanificada || sesionPlanificada.semana.macrociclo.personaId !== persona.id) {
     notFound();
   }
+
+  // Catálogo (los mismos ejercicios del test de RM) para el campo opcional
+  // de "posible marca nueva" — solo tiene sentido para ejercicios con
+  // RmVigente, así que se limita a este catálogo y no a texto libre.
+  const catalogo = await prisma.ejercicio.findMany({
+    where: { activo: true, admitePorcentajeRm: true, esDeTiempo: false },
+    select: { id: true, nombre: true },
+    orderBy: { nombre: "asc" },
+  });
+
+  // Contexto para que el entrenador decida el WOD: la zona de %1RM/reps/RIR
+  // ya vive en el mesociclo (editable en el paso "Carga" del wizard); aquí
+  // solo se resuelve con el mismo criterio que el resto de la app cuando el
+  // macrociclo es anterior a esa columna (ADR-47).
+  const mesociclo = sesionPlanificada.semana.mesociclo;
+  const objetivoBloqueResuelto =
+    resolverObjetivoBloque({
+      tipo: mesociclo.tipo,
+      objetivoBloque: esObjetivoBloque(mesociclo.objetivoBloque) ? mesociclo.objetivoBloque : null,
+    }) ?? "hipertrofia";
+  const zonaPorDefecto = ZONAS_INTENSIDAD[objetivoBloqueResuelto];
+  const rangoPorDefecto = RANGOS_VOLUMEN[objetivoBloqueResuelto];
+
+  const contextoSesion = {
+    numeroSemana: sesionPlanificada.semana.numeroSemana,
+    tipoMicrociclo: sesionPlanificada.semana.tipoMicrociclo,
+    esDeload: sesionPlanificada.semana.esDeload,
+    factorVolumen: sesionPlanificada.semana.factorVolumen,
+    factorIntensidad: sesionPlanificada.semana.factorIntensidad,
+    objetivoBloqueLabel: OBJETIVO_BLOQUE_LABEL[objetivoBloqueResuelto],
+    intensidadMinPct: mesociclo.intensidadMinPct ?? zonaPorDefecto.intensidadMinPct,
+    intensidadMaxPct: mesociclo.intensidadMaxPct ?? zonaPorDefecto.intensidadMaxPct,
+    repsMin: mesociclo.repsMin ?? zonaPorDefecto.repsMin,
+    repsMax: mesociclo.repsMax ?? zonaPorDefecto.repsMax,
+    rirObjetivo: mesociclo.rirObjetivo ?? Math.round((zonaPorDefecto.rirMin + zonaPorDefecto.rirMax) / 2),
+    progresionLabel:
+      PROGRESION_LABEL[
+        esProgresionBloque(mesociclo.progresion) ? mesociclo.progresion : "mantenimiento"
+      ],
+    seriesMinReferencia: rangoPorDefecto.seriesMin,
+    seriesMaxReferencia: rangoPorDefecto.seriesMax,
+    seriesSemanalesPorPatron:
+      (mesociclo.seriesSemanalesPorPatron as Record<string, number> | null) ?? {},
+  };
 
   return (
     <main className="space-y-6 pb-10">
@@ -67,17 +133,9 @@ export default async function EntrenamientoPage({
       <RegistroSesion
         cc={cc}
         sesionPlanificadaId={sesionPlanificada.id}
-        prescripciones={sesionPlanificada.prescripciones.map((p) => ({
-          id: p.id,
-          orden: p.orden,
-          ejercicioId: p.ejercicioId,
-          ejercicioNombre: p.ejercicio.nombre,
-          esDeTiempo: p.ejercicio.esDeTiempo,
-          series: p.series,
-          repeticionesObjetivo: p.repeticionesObjetivo,
-          cargaKg: p.cargaKg,
-          rirObjetivo: p.rirObjetivo,
-        }))}
+        wodInicial={sesionPlanificada.wod}
+        contexto={contextoSesion}
+        catalogo={catalogo}
       />
     </main>
   );

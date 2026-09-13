@@ -8,7 +8,10 @@ import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { AppDialog } from "@/components/ui/AppDialog";
-import { MesocicloCargaEditor } from "@/components/macrociclo/MesocicloCargaEditor";
+import {
+  ObjetivoBloqueEditor,
+  type ObjetivoBloqueValorInicial,
+} from "@/components/macrociclo/ObjetivoBloqueEditor";
 import {
   type ObjetivoTipo,
   type TipoEtapa,
@@ -18,15 +21,22 @@ import {
   type TipoPeriodo,
   type Vo2maxSnapshot,
   ETAPAS_POR_PERIODO,
+  ETAPA_LEGER_MAXIMA,
+  COOPER_DISTANCIA_MINIMA_M,
   MESES_POR_ETAPA_LABEL,
   MESES_POR_TIPO_LABEL,
   ORDEN_MESES,
   TIPOS_MICROCICLO,
   TIPOS_PERIODO,
   calcularVo2maxLeger,
+  esVo2maxPlausible,
   toISODate,
   velocidadLegerKmh,
 } from "@/lib/macrociclo";
+import {
+  getVO2MaxClassification,
+  type HealthClassification,
+} from "@/helpers/calculations";
 import {
   calcularPeriodizacion,
   contarSemanas,
@@ -41,12 +51,10 @@ import {
   estaSinConfigurar,
   sugerirConfiguracionSemana,
 } from "@/lib/planificacion/sugerencia-semana";
-import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import {
   guardarRmAction,
   guardarVo2maxAction,
   omitirVo2maxAction,
-  guardarPeriodizacionAction,
   guardarPeriodizacionSinRedirectAction,
   activarMacrocicloAction,
 } from "@/actions/macrociclo";
@@ -222,6 +230,65 @@ export function PasoRm({
   );
 }
 
+const VO2MAX_BADGE_COLOR: Record<HealthClassification["color"], string> = {
+  verde:
+    "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  amarillo:
+    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  rojo: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+};
+
+function ResultadoVo2max({
+  valor,
+  edad,
+  sexo,
+  detalle,
+}: {
+  valor: number;
+  edad: number;
+  sexo: string;
+  detalle?: string;
+}) {
+  const clasificacion = getVO2MaxClassification(valor, edad, sexo);
+  const fueraDeRango = !esVo2maxPlausible(valor);
+
+  return (
+    <div className="space-y-2 rounded-2xl border border-accent/30 bg-accent/5 p-4">
+      <p className="text-sm font-medium text-text-primary dark:text-white">
+        Resultado estimado
+      </p>
+      {detalle ? <p className="text-sm text-text-secondary">{detalle}</p> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm text-text-secondary">
+          VO2Max estimado: {valor.toFixed(2)} ml/kg/min
+        </p>
+        {clasificacion.label !== "Sin datos" ? (
+          <span
+            className={[
+              "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
+              VO2MAX_BADGE_COLOR[clasificacion.color],
+            ].join(" ")}
+          >
+            {clasificacion.label}
+          </span>
+        ) : null}
+      </div>
+      {fueraDeRango ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          Este valor está fuera del rango fisiológico habitual. Revisa el dato
+          antes de guardar: probablemente haya un error de captura.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const VO2MAX_METODO_LABEL: Record<string, string> = {
+  cooper: "Cooper",
+  leger: "Léger",
+  directo: "Ya lo sé",
+};
+
 export function PasoVo2max({
   cc,
   macrocicloId,
@@ -231,6 +298,10 @@ export function PasoVo2max({
   setCooperDistancia,
   legerEtapa,
   setLegerEtapa,
+  valorDirecto,
+  setValorDirecto,
+  edad,
+  sexo,
 }: {
   cc: string;
   macrocicloId: number;
@@ -240,7 +311,15 @@ export function PasoVo2max({
   setCooperDistancia: (value: string) => void;
   legerEtapa: string;
   setLegerEtapa: (value: string) => void;
+  valorDirecto: string;
+  setValorDirecto: (value: string) => void;
+  edad: number;
+  sexo: string;
 }) {
+  const distanciaNumero = Number(cooperDistancia);
+  const etapaNumero = Number(legerEtapa);
+  const directoNumero = Number(valorDirecto);
+
   return (
     <div className="space-y-5">
     <form action={guardarVo2maxAction} className="space-y-5">
@@ -258,8 +337,22 @@ export function PasoVo2max({
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {["cooper", "leger"].map((m) => (
+      {metodo !== "directo" ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200">
+          Cooper y Léger exigen esfuerzo máximo (correr hasta el agotamiento).
+          No los hagas si tienes una condición cardiovascular, una lesión
+          reciente, estás embarazada o llevas mucho tiempo sin entrenar —
+          consulta primero con un profesional de la salud. Antes de empezar:
+          calienta 8-10 minutos, hidrátate, usa calzado adecuado y evita
+          hacerlo con calor extremo. Si ya tienes un VO2Max medido (en
+          laboratorio, con un reloj deportivo o un test previo), usa la
+          opción &ldquo;Ya lo sé&rdquo; para registrarlo directamente sin
+          repetir el esfuerzo.
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {["cooper", "leger", "directo"].map((m) => (
           <label
             key={m}
             className={[
@@ -277,8 +370,8 @@ export function PasoVo2max({
               onChange={(e) => setMetodo(e.target.value)}
               className="sr-only"
             />
-            <span className="font-medium capitalize text-text-primary dark:text-white">
-              {m === "leger" ? "Léger" : m}
+            <span className="font-medium text-text-primary dark:text-white">
+              {VO2MAX_METODO_LABEL[m] ?? m}
             </span>
           </label>
         ))}
@@ -303,12 +396,30 @@ export function PasoVo2max({
             />
           </label>
           <p className="text-xs text-text-secondary">
-            Cómo se hace: corre la mayor distancia posible durante 12 minutos
-            continuos en una pista plana, sin detenerte, y registra la
-            distancia total recorrida.
+            Cómo se hace: corre (o combina carrera y caminata) la mayor
+            distancia posible durante 12 minutos continuos en una pista plana,
+            sin detenerte, y registra la distancia total recorrida. Si no
+            puedes correr 12 minutos seguidos con seguridad, no es el test
+            adecuado para ti todavía — coméntaselo a tu entrenador.
           </p>
+
+          {Number.isFinite(distanciaNumero) && distanciaNumero > 0 ? (
+            distanciaNumero <= COOPER_DISTANCIA_MINIMA_M ? (
+              <p className="text-xs text-red-600 dark:text-red-400">
+                La distancia es demasiado baja para que la fórmula de Cooper
+                dé un resultado válido (mínimo{" "}
+                {COOPER_DISTANCIA_MINIMA_M.toFixed(1)} m). Verifica el dato.
+              </p>
+            ) : (
+              <ResultadoVo2max
+                valor={(distanciaNumero - 504.9) / 44.73}
+                edad={edad}
+                sexo={sexo}
+              />
+            )
+          ) : null}
         </div>
-      ) : (
+      ) : metodo === "leger" ? (
         <div className="space-y-3">
           <label className="block space-y-2">
             <span className="text-sm font-medium text-text-primary dark:text-white">
@@ -329,24 +440,55 @@ export function PasoVo2max({
           <p className="text-xs text-text-secondary">
             Cómo se hace: test de ida y vuelta de 20 metros (course-navette).
             Corre siguiendo el ritmo de las señales sonoras, aumentando la
-            velocidad en cada etapa, hasta que ya no puedas mantener el ritmo.
-            Registra la última etapa completada.
+            velocidad en cada etapa, hasta que ya no puedas mantener el ritmo
+            o falles dos veces seguidas en llegar a la línea a tiempo.
+            Registra la última etapa completada por entero.
           </p>
 
-          {Number(legerEtapa) >= 1 ? (
-            <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
-              <p className="text-sm font-medium text-text-primary dark:text-white">
-                Resultados estimados
-              </p>
-              <p className="text-sm text-text-secondary">
-                Velocidad final:{" "}
-                {velocidadLegerKmh(Number(legerEtapa)).toFixed(1)} km/h
-              </p>
-              <p className="text-sm text-text-secondary">
-                VO2Max estimado:{" "}
-                {calcularVo2maxLeger(Number(legerEtapa)).toFixed(2)} ml/kg/min
-              </p>
-            </div>
+          {Number.isInteger(etapaNumero) && etapaNumero >= 1 ? (
+            <>
+              <ResultadoVo2max
+                valor={calcularVo2maxLeger(etapaNumero)}
+                edad={edad}
+                sexo={sexo}
+                detalle={`Velocidad final: ${velocidadLegerKmh(etapaNumero).toFixed(1)} km/h`}
+              />
+              {etapaNumero > ETAPA_LEGER_MAXIMA ? (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  El protocolo estándar solo está validado hasta la etapa{" "}
+                  {ETAPA_LEGER_MAXIMA}. Por encima, la fórmula extrapola y
+                  pierde precisión.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-text-primary dark:text-white">
+              VO2Max (ml/kg/min)
+            </span>
+            <input
+              type="number"
+              name="valorDirecto"
+              value={valorDirecto}
+              onWheel={(e) => e.currentTarget.blur()}
+              onChange={(e) => setValorDirecto(e.target.value)}
+              required
+              min="0"
+              step="0.1"
+              className="w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
+            />
+          </label>
+          <p className="text-xs text-text-secondary">
+            Úsalo si ya conoces tu VO2Max por otra vía (laboratorio, reloj
+            deportivo con GPS, u otro test ya realizado) y no quieres repetir
+            un test de esfuerzo máximo ahora.
+          </p>
+
+          {Number.isFinite(directoNumero) && directoNumero > 0 ? (
+            <ResultadoVo2max valor={directoNumero} edad={edad} sexo={sexo} />
           ) : null}
         </div>
       )}
@@ -1164,24 +1306,23 @@ export function PasoCarga({
   cc,
   macrocicloId,
   mesociclos,
-  perfil,
   onContinuar,
 }: {
   cc: string;
   macrocicloId: number;
-  perfil: PerfilDeportivo;
   mesociclos: Array<{
     id: number;
     tipo: string;
     fechaInicio: Date;
     fechaFin: Date;
-    semanas: Array<{
-      numeroSemana: number;
-      frecuencia: number;
-      fechaInicio: Date;
-      fechaFin: Date;
-    }>;
-    carga: CargaMesocicloInputData | null;
+    objetivoBloque: string | null;
+    intensidadMinPct: number | null;
+    intensidadMaxPct: number | null;
+    repsMin: number | null;
+    repsMax: number | null;
+    rirObjetivo: number | null;
+    progresion: string | null;
+    seriesSemanalesPorPatron: unknown;
   }>;
   onContinuar: () => void;
 }) {
@@ -1189,7 +1330,7 @@ export function PasoCarga({
   const [guardados, setGuardados] = useState<Set<number>>(() => {
     const set = new Set<number>();
     for (const mesociclo of mesociclos) {
-      if (mesociclo.carga) {
+      if (mesociclo.objetivoBloque) {
         set.add(mesociclo.id);
       }
     }
@@ -1203,7 +1344,7 @@ export function PasoCarga({
       <div className="space-y-5">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-text-primary dark:text-white">
-            Dosificación de carga
+            Objetivo de bloque
           </h2>
           <p className="text-sm text-text-secondary">
             Primero debes guardar la periodización en el paso anterior.
@@ -1220,18 +1361,18 @@ export function PasoCarga({
     <div className="space-y-5">
       <div className="space-y-1">
         <h2 className="text-lg font-semibold text-text-primary dark:text-white">
-          Dosificación de carga
+          Objetivo de bloque
         </h2>
         <p className="text-sm text-text-secondary">
-          Selecciona un mesociclo y distribuye sus minutos por dirección,
-          microciclo y sesión.
+          Selecciona un mesociclo y confirma o ajusta su zona de %1RM, reps,
+          RIR y series semanales por patrón (ADR-47).
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
         {mesociclos.map((m) => {
           const activo = m.id === selectedId;
-          const tieneCarga = guardados.has(m.id) || m.carga;
+          const tieneObjetivo = guardados.has(m.id) || Boolean(m.objetivoBloque);
           return (
             <button
               key={m.id}
@@ -1241,32 +1382,56 @@ export function PasoCarga({
                 "rounded-full px-3 py-1 text-xs font-medium transition",
                 activo
                   ? "bg-accent text-white"
-                  : tieneCarga
+                  : tieneObjetivo
                     ? "bg-bg-subtle text-text-primary dark:text-white"
                     : "bg-bg-soft text-text-tertiary",
               ].join(" ")}
             >
               {MESES_POR_TIPO_LABEL[m.tipo as TipoMesociclo] ?? m.tipo}
-              {tieneCarga ? " ✓" : ""}
+              {tieneObjetivo ? " ✓" : ""}
             </button>
           );
         })}
       </div>
 
       {mesociclo ? (
-        <MesocicloCargaEditor
+        <ObjetivoBloqueEditor
+          // El key fuerza a remontar el editor al cambiar de mesociclo (a
+          // mano o por el avance automático de abajo): sin esto, el estado
+          // interno del formulario (valores editados, aviso de "guardado")
+          // seguiría mostrando el mesociclo anterior.
+          key={mesociclo.id}
           cc={cc}
           macrocicloId={macrocicloId}
           mesocicloId={mesociclo.id}
-          semanas={mesociclo.semanas.map((s) => ({
-            numeroSemana: s.numeroSemana,
-            frecuencia: s.frecuencia,
-          }))}
-          cargaInicial={mesociclo.carga}
-          perfil={perfil}
-          onGuardado={() =>
-            setGuardados((prev) => new Set([...Array.from(prev), mesociclo.id]))
+          tipoMesociclo={mesociclo.tipo as TipoMesociclo}
+          valorInicial={
+            {
+              objetivoBloque: mesociclo.objetivoBloque,
+              intensidadMinPct: mesociclo.intensidadMinPct,
+              intensidadMaxPct: mesociclo.intensidadMaxPct,
+              repsMin: mesociclo.repsMin,
+              repsMax: mesociclo.repsMax,
+              rirObjetivo: mesociclo.rirObjetivo,
+              progresion: mesociclo.progresion,
+              seriesSemanalesPorPatron: mesociclo.seriesSemanalesPorPatron,
+            } satisfies ObjetivoBloqueValorInicial
           }
+          onGuardado={() => {
+            setGuardados((prev) => new Set([...Array.from(prev), mesociclo.id]));
+
+            // Al guardar, pasa automáticamente al siguiente mesociclo de la
+            // lista para no obligar al entrenador a hacer clic en cada
+            // pastilla. Si ya es el último, se queda aquí (el botón
+            // "Continuar a revisión" sigue disponible).
+            const indiceActual = mesociclos.findIndex(
+              (m) => m.id === mesociclo.id,
+            );
+            const siguiente = mesociclos[indiceActual + 1];
+            if (siguiente) {
+              setSelectedId(siguiente.id);
+            }
+          }}
         />
       ) : null}
 
@@ -1298,6 +1463,11 @@ function describirVo2max(
           `Velocidad final: ${vo2max.velocidadKmh.toFixed(1)} km/h`,
           `VO2Max: ${vo2max.valor.toFixed(2)} ml/kg/min`,
         ],
+      };
+    case "directo":
+      return {
+        metodo: "Valor directo",
+        detalles: [`VO2Max: ${vo2max.valor.toFixed(2)} ml/kg/min`],
       };
     default:
       return {
@@ -1339,7 +1509,7 @@ export function PasoRevision({
   fechaFin: string;
   sesionesRmSeleccionadas: SesionRm[];
   vo2maxSnapshot: Vo2maxSnapshot | null;
-  mesociclos: Array<{ id: number; tipo: string; carga: CargaMesocicloInputData | null }>;
+  mesociclos: Array<{ id: number; tipo: string; objetivoBloque: string | null }>;
   buildPeriodizacionPayload: () => {
     semanas: {
       numeroSemana: number;
@@ -1352,10 +1522,14 @@ export function PasoRevision({
     }[];
   };
 }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const urlError = searchParams.get("error") ?? "";
   const payload = buildPeriodizacionPayload();
   const vo2maxInfo = describirVo2max(vo2maxSnapshot);
+  const [isGuardandoPending, startGuardandoTransition] = useTransition();
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  const [guardadoOk, setGuardadoOk] = useState(false);
 
   return (
     <div className="space-y-5">
@@ -1455,7 +1629,7 @@ export function PasoRevision({
         <p className="text-sm text-text-secondary">Mesociclos</p>
         <ul className="mt-2 grid gap-1 sm:grid-cols-2">
           {mesociclos.map((mesociclo) => {
-            const tieneCarga = Boolean(mesociclo.carga);
+            const tieneObjetivo = Boolean(mesociclo.objetivoBloque);
             return (
               <li
                 key={mesociclo.id}
@@ -1467,12 +1641,12 @@ export function PasoRevision({
                 </span>
                 <span
                   className={
-                    tieneCarga
+                    tieneObjetivo
                       ? "font-medium text-accent"
                       : "font-medium text-text-tertiary"
                   }
                 >
-                  {tieneCarga ? "✓ carga definida" : "carga pendiente"}
+                  {tieneObjetivo ? "✓ objetivo de bloque definido" : "objetivo pendiente"}
                 </span>
               </li>
             );
@@ -1533,7 +1707,21 @@ export function PasoRevision({
         </div>
       </div>
 
-      <form action={guardarPeriodizacionAction} className="space-y-3">
+      <form
+        action={async (formData) => {
+          setGuardadoOk(false);
+          const result = await guardarPeriodizacionSinRedirectAction(formData);
+          if (result.success) {
+            setGuardadoOk(true);
+            startGuardandoTransition(() => {
+              router.refresh();
+            });
+          } else {
+            setErrorGuardado(result.error);
+          }
+        }}
+        className="space-y-3"
+      >
         <input type="hidden" name="cc" value={cc} />
         <input type="hidden" name="id" value={macrocicloId} />
         {/* ADR-37: la estructura la deriva el servidor del perfil deportivo;
@@ -1543,7 +1731,17 @@ export function PasoRevision({
         <FormSubmitButton pendingLabel="Guardando periodización...">
           Guardar periodización
         </FormSubmitButton>
+        {guardadoOk && !isGuardandoPending ? (
+          <p className="text-sm text-accent">Periodización guardada.</p>
+        ) : null}
       </form>
+      <AppDialog
+        open={errorGuardado !== null}
+        title="No se pudo guardar la periodización"
+        onClose={() => setErrorGuardado(null)}
+      >
+        {errorGuardado}
+      </AppDialog>
 
       <form action={activarMacrocicloAction}>
         <input type="hidden" name="cc" value={cc} />

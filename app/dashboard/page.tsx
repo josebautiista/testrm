@@ -21,6 +21,7 @@ import { iniciarMacrocicloAction } from "@/actions/macrociclo";
 import {
   obtenerMacrocicloAbierto,
   obtenerMacrociclosPorPersona,
+  obtenerProximaSesionPlanificada,
 } from "@/services/macrociclo.service";
 import { getUserLevel, isUserLevel } from "@/lib/user-level";
 
@@ -169,6 +170,11 @@ export default async function DashboardPage({
     }),
   ]);
 
+  const proximaSesion =
+    macrocicloAbierto && macrocicloAbierto.estado === "activo"
+      ? await obtenerProximaSesionPlanificada(macrocicloAbierto.id)
+      : null;
+
   // R-15/TASK-052: aviso de reevaluación por ejercicio, no por días desde la
   // última sesión (D-01 también contaminaba este banner).
   const rmsCaducados = rmVigentesActivos
@@ -262,6 +268,28 @@ export default async function DashboardPage({
         rmsCaducados={rmsCaducados}
         newSessionHref={newSessionHref}
       />
+
+      {proximaSesion ? (
+        <Link
+          href={`/entrenamiento/${proximaSesion.id}?cc=${encodeURIComponent(cc)}`}
+          className="flex items-center justify-between gap-4 rounded-3xl border border-accent/30 bg-accent/5 p-4 transition hover:bg-accent/10 dark:border-accent/30 sm:p-5"
+        >
+          <div>
+            <p className="text-sm font-medium text-text-primary dark:text-white">
+              Próxima sesión: Semana {proximaSesion.semana.numeroSemana} · Sesión{" "}
+              {proximaSesion.orden}
+            </p>
+            <p className="text-sm text-text-secondary">
+              {proximaSesion.wod ? "WOD listo" : "WOD pendiente"}
+              {proximaSesion.estado === "parcial" ? " · en curso" : ""} · Toca para{" "}
+              {proximaSesion.estado === "parcial" ? "continuar" : "registrar"}
+            </p>
+          </div>
+          <span aria-hidden="true" className="text-lg text-text-tertiary">
+            →
+          </span>
+        </Link>
+      ) : null}
 
       <DashboardSessionsSection
         sessions={sessionItems}

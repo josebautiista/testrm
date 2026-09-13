@@ -14,36 +14,54 @@ function formatDaysAgo(date: Date | null) {
   return `hace ${days} días`;
 }
 
+function fechaHaceDias(dias: number): Date {
+  return new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+}
+
 export default async function AtletasPage() {
   const authUser = await getAuthUserFromCookies();
   const personaWhere: Prisma.PersonaWhereInput =
     authUser?.role === "admin" ? {} : { entrenadorId: authUser?.userId ?? "" };
 
-  const [personas, rmVigentes, ajustesPendientes, macrociclosAbiertos, ultimasSesiones] =
-    await Promise.all([
-      prisma.persona.findMany({
-        where: personaWhere,
-        select: { id: true, cc: true, nombre: true },
-        orderBy: { nombre: "asc" },
-      }),
-      prisma.rmVigente.findMany({
-        where: { validoHasta: null },
-        select: { personaId: true, validoDesde: true, confianza: true },
-      }),
-      prisma.ajustePropuesto.groupBy({
-        by: ["personaId"],
-        where: { estado: "pendiente" },
-        _count: { _all: true },
-      }),
-      prisma.macrociclo.findMany({
-        where: { estado: { in: ["borrador", "activo"] } },
-        select: { personaId: true, estado: true },
-      }),
-      prisma.sesion.groupBy({
-        by: ["personaId"],
-        _max: { createdAt: true },
-      }),
-    ]);
+  const dosSemanasAtras = fechaHaceDias(14);
+
+  const [
+    personas,
+    rmVigentes,
+    ajustesPendientes,
+    macrociclosAbiertos,
+    ultimasSesiones,
+    sesionesOmitidasRecientes,
+  ] = await Promise.all([
+    prisma.persona.findMany({
+      where: personaWhere,
+      select: { id: true, cc: true, nombre: true },
+      orderBy: { nombre: "asc" },
+    }),
+    prisma.rmVigente.findMany({
+      where: { validoHasta: null },
+      select: { personaId: true, validoDesde: true, confianza: true },
+    }),
+    prisma.ajustePropuesto.groupBy({
+      by: ["personaId"],
+      where: { estado: "pendiente" },
+      _count: { _all: true },
+    }),
+    prisma.macrociclo.findMany({
+      where: { estado: { in: ["borrador", "activo"] } },
+      select: { personaId: true, estado: true },
+    }),
+    prisma.sesion.groupBy({
+      by: ["personaId"],
+      _max: { createdAt: true },
+    }),
+    // Sesiones omitidas en las últimas 2 semanas — no hay relación directa
+    // a personaId en SesionPlanificada, así que se agrupa en memoria.
+    prisma.sesionPlanificada.findMany({
+      where: { estado: "omitida", updatedAt: { gte: dosSemanasAtras } },
+      select: { semana: { select: { macrociclo: { select: { personaId: true } } } } },
+    }),
+  ]);
 
   const caducadosPorPersona = new Map<number, number>();
   for (const rm of rmVigentes) {
@@ -57,6 +75,11 @@ export default async function AtletasPage() {
   const ultimaSesionPorPersona = new Map(
     ultimasSesiones.map((s) => [s.personaId, s._max.createdAt]),
   );
+  const omitidasPorPersona = new Map<number, number>();
+  for (const sp of sesionesOmitidasRecientes) {
+    const personaId = sp.semana.macrociclo.personaId;
+    omitidasPorPersona.set(personaId, (omitidasPorPersona.get(personaId) ?? 0) + 1);
+  }
 
   return (
     <main className="space-y-6 pb-10">
@@ -88,6 +111,7 @@ export default async function AtletasPage() {
             const ajustes = ajustesPorPersona.get(persona.id) ?? 0;
             const estadoMacrociclo = macrocicloPorPersona.get(persona.id);
             const ultimaSesion = ultimaSesionPorPersona.get(persona.id) ?? null;
+            const omitidas = omitidasPorPersona.get(persona.id) ?? 0;
 
             return (
               <Link
@@ -122,6 +146,11 @@ export default async function AtletasPage() {
                     {ajustes > 0 ? (
                       <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800 dark:border-blue-500/20 dark:bg-blue-950/30 dark:text-blue-200">
                         {ajustes} ajuste{ajustes === 1 ? "" : "s"} pendiente{ajustes === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                    {omitidas > 0 ? (
+                      <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-800 dark:border-red-500/20 dark:bg-red-950/30 dark:text-red-200">
+                        {omitidas} sesión{omitidas === 1 ? "" : "es"} omitida{omitidas === 1 ? "" : "s"} (2 sem.)
                       </span>
                     ) : null}
                   </div>

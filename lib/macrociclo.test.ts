@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COOPER_DISTANCIA_MINIMA_M,
   ETAPAS_POR_PERIODO,
   ETAPA_DESCRIPCION,
+  ETAPA_LEGER_MAXIMA,
   MESOCICLO_DESCRIPCION,
   MESES_POR_TIPO_LABEL,
   MICROCICLO_DESCRIPCION,
@@ -10,11 +12,16 @@ import {
   PASO_WIZARD,
   TIPOS_MICROCICLO,
   TOTAL_PASOS_WIZARD,
+  VO2MAX_RANGO_PLAUSIBLE,
+  calcularVo2maxLeger,
+  esVo2maxPlausible,
   isTipoEtapa,
   isTipoMesociclo,
   isTipoMicrociclo,
   isTipoPeriodo,
+  isMetodoVo2max,
 } from "./macrociclo";
+import { getVO2MaxClassification } from "@/helpers/calculations";
 
 describe("PASO_WIZARD (ADR-42)", () => {
   const numeros = Object.values(PASO_WIZARD);
@@ -74,5 +81,76 @@ describe("vocabulario del macrociclo", () => {
       expect(MICROCICLO_DESCRIPCION[value].length).toBeGreaterThan(20);
     }
     expect(TIPOS_MICROCICLO.map((t) => t.value)).toContain("taper");
+  });
+});
+
+describe("VO2max: validación de plausibilidad", () => {
+  it("marca como implausible un valor negativo o extremo", () => {
+    expect(esVo2maxPlausible(-5)).toBe(false);
+    expect(esVo2maxPlausible(0)).toBe(false);
+    expect(esVo2maxPlausible(150)).toBe(false);
+    expect(esVo2maxPlausible(NaN)).toBe(false);
+  });
+
+  it("acepta valores dentro del rango fisiológico general", () => {
+    expect(esVo2maxPlausible(VO2MAX_RANGO_PLAUSIBLE.min)).toBe(true);
+    expect(esVo2maxPlausible(VO2MAX_RANGO_PLAUSIBLE.max)).toBe(true);
+    expect(esVo2maxPlausible(45)).toBe(true);
+  });
+
+  it("Cooper: la distancia mínima es exactamente donde la fórmula cruza a cero", () => {
+    const valorEnElLimite = (COOPER_DISTANCIA_MINIMA_M - 504.9) / 44.73;
+    expect(valorEnElLimite).toBeCloseTo(0, 5);
+  });
+
+  it("Léger: la etapa máxima documentada coincide con el protocolo estándar", () => {
+    expect(ETAPA_LEGER_MAXIMA).toBe(21);
+    expect(esVo2maxPlausible(calcularVo2maxLeger(ETAPA_LEGER_MAXIMA))).toBe(
+      true,
+    );
+  });
+});
+
+describe("getVO2MaxClassification", () => {
+  it("sin edad o sexo reconocible, no adivina una categoría", () => {
+    expect(getVO2MaxClassification(45).label).toBe("Sin datos");
+    expect(getVO2MaxClassification(45, 30, "desconocido").label).toBe(
+      "Sin datos",
+    );
+  });
+
+  it("clasifica a un hombre de 30 años dentro de las categorías esperadas", () => {
+    expect(getVO2MaxClassification(20, 30, "masculino").label).toBe(
+      "Muy pobre",
+    );
+    expect(getVO2MaxClassification(41, 30, "masculino").label).toBe(
+      "Promedio",
+    );
+    expect(getVO2MaxClassification(60, 30, "masculino").label).toBe(
+      "Excelente",
+    );
+  });
+
+  it("las mismas categorías existen para mujeres con umbrales propios", () => {
+    expect(getVO2MaxClassification(55, 30, "femenino").label).toBe(
+      "Excelente",
+    );
+    expect(getVO2MaxClassification(20, 30, "femenino").label).toBe(
+      "Muy pobre",
+    );
+  });
+
+  it("acepta las variantes cortas de sexo usadas en el resto del código", () => {
+    expect(getVO2MaxClassification(50, 30, "m").label).not.toBe("Sin datos");
+    expect(getVO2MaxClassification(50, 30, "f").label).not.toBe("Sin datos");
+  });
+});
+
+describe("VO2max: método directo (valor ya conocido)", () => {
+  it("se reconoce como método válido junto a cooper y léger", () => {
+    expect(isMetodoVo2max("directo")).toBe(true);
+    expect(isMetodoVo2max("cooper")).toBe(true);
+    expect(isMetodoVo2max("leger")).toBe(true);
+    expect(isMetodoVo2max("otro")).toBe(false);
   });
 });
