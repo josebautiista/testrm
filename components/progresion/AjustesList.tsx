@@ -105,7 +105,7 @@ function AjusteCard({
           intensidad igual). Si esa semana ya tiene sesiones generadas por el
           motor automático, entra al macrociclo y usa &ldquo;Generar plan
           automáticamente&rdquo; de nuevo para que el recorte se refleje en
-          ellas — aceptar aquí no las recalcula solo.
+          ellas. Aceptar aquí no las recalcula solo.
         </p>
       ) : null}
       {ajuste.tipo === "revisar_disponibilidad" ? (

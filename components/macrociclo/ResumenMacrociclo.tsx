@@ -66,10 +66,10 @@ export function ResumenMacrociclo({ resumen }: { resumen: ResumenMacrocicloData 
                       {r.ejercicioNombre}
                     </td>
                     <td className="px-3 py-2 text-text-secondary">
-                      {r.inicioKg !== null ? `${formatNumber(r.inicioKg)} kg` : "—"}
+                      {r.inicioKg !== null ? `${formatNumber(r.inicioKg)} kg` : "sin dato"}
                     </td>
                     <td className="px-3 py-2 text-text-secondary">
-                      {r.actualKg !== null ? `${formatNumber(r.actualKg)} kg` : "—"}
+                      {r.actualKg !== null ? `${formatNumber(r.actualKg)} kg` : "sin dato"}
                     </td>
                     <td
                       className={

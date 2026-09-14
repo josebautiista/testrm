@@ -127,7 +127,7 @@ export function EjercicioForm({
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium text-text-primary dark:text-white">% masa corporal (hombre) — calibración del test</span>
+          <span className="text-sm font-medium text-text-primary dark:text-white">% masa corporal (hombre): calibración del test</span>
           <input
             type="number"
             step="0.01"
@@ -140,7 +140,7 @@ export function EjercicioForm({
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium text-text-primary dark:text-white">% masa corporal (mujer) — calibración del test</span>
+          <span className="text-sm font-medium text-text-primary dark:text-white">% masa corporal (mujer): calibración del test</span>
           <input
             type="number"
             step="0.01"

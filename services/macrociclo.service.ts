@@ -803,7 +803,7 @@ export async function guardarPeriodizacion({
       // Perf: guardarPeriodizacion corre en UNA transacción interactiva con
       // timeout fijo (ver `$transaction` más abajo). Hacer un round-trip por
       // semana y otro por cada ejercicio de cada semana escala como
-      // O(semanas × ejercicios) — con un macrociclo largo (p.ej. 29-31
+      // O(semanas × ejercicios). Con un macrociclo largo (p.ej. 29-31
       // semanas, típico en objetivos "salud"/"sin_competencia") eso son 150+
       // round-trips secuenciales, suficientes para agotar el timeout de la
       // transacción a mitad de camino. Cuando eso pasa, MariaDB hace rollback

@@ -170,7 +170,7 @@ export function PasoPerfil({
 
       <ComoFunciona
         titulo="Por qué no te preguntamos qué deporte practicas"
-        resumen="Porque el nombre del deporte no dice cómo hay que entrenar —un lanzador de peso y un halterófilo entrenan parecido aunque sean deportes distintos— y porque puede que no practiques ninguno. Estas tres preguntas son las que de verdad cambian la forma del plan, y funcionan igual entrenes para competir o para estar mejor."
+        resumen="Porque el nombre del deporte no dice cómo hay que entrenar (un lanzador de peso y un halterófilo entrenan parecido aunque sean deportes distintos) y porque puede que no practiques ninguno. Estas tres preguntas son las que de verdad cambian la forma del plan, y funcionan igual entrenes para competir o para estar mejor."
         pasos={[
           {
             titulo: "Si compites y con qué frecuencia",
@@ -205,8 +205,8 @@ export function PasoPerfil({
           <Aviso tono="alerta">
             En el paso 1 elegiste objetivo{" "}
             <strong className="text-text-primary dark:text-white">Salud</strong>
-            , y has marcado una estructura con competencias. Es posible —hay
-            quien entrena por salud y corre una carrera popular— pero revisa que
+            , y has marcado una estructura con competencias. Es posible (hay
+            quien entrena por salud y corre una carrera popular) pero revisa que
             sea lo que quieres.
           </Aviso>
         ) : null}

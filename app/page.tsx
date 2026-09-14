@@ -163,7 +163,7 @@ const FEATURES = [
   {
     icon: IconHistory,
     title: "Historial que no se reescribe",
-    desc: "Cada nueva medición abre un registro nuevo — el histórico de cada atleta queda intacto.",
+    desc: "Cada nueva medición abre un registro nuevo: el histórico de cada atleta queda intacto.",
   },
   {
     icon: IconFlask,
@@ -186,7 +186,7 @@ const PASOS = [
   {
     numero: "3",
     titulo: "Registra la ejecución",
-    desc: "Cada sesión, cada serie — lo planificado frente a lo ejecutado.",
+    desc: "Cada sesión, cada serie: lo planificado frente a lo ejecutado.",
   },
   {
     numero: "4",
@@ -282,7 +282,7 @@ export default async function HomePage() {
           <p className="leading-7 text-text-secondary">
             Para atletas con más experiencia, los protocolos de laboratorio
             Casas y Naclerio miden con carga real en vez de estimar. Y cada
-            vez que el RM cambia, el anterior no se sobrescribe — queda
+            vez que el RM cambia, el anterior no se sobrescribe: queda
             archivado, así que ninguna prescripción pasada cambia
             retroactivamente.
           </p>
@@ -306,7 +306,7 @@ export default async function HomePage() {
             Todo el ciclo, en un solo lugar.
           </h2>
           <p className="text-text-secondary">
-            Evaluación, prescripción y ejecución conectadas — cada carga que
+            Evaluación, prescripción y ejecución conectadas: cada carga que
             ves tiene un test y una fecha que la respaldan.
           </p>
         </div>

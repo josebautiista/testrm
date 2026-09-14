@@ -35,11 +35,11 @@ const MEDIDA_GRUPOS = [
   { path: "adiposidad", label: "Adiposidad" },
   {
     path: "distribucionAdiposoMuscular.masaGrasa",
-    label: "Masa grasa — distribución",
+    label: "Masa grasa: distribución",
   },
   {
     path: "distribucionAdiposoMuscular.tejidoMuscular",
-    label: "Tejido muscular — distribución",
+    label: "Tejido muscular: distribución",
   },
   { path: "indicesSalud", label: "Índices de salud" },
 ];
@@ -152,7 +152,7 @@ function getVo2maxInfo(
     );
   }
   if (vo2max.fueraDeRango) {
-    detalles.push("Fuera del rango fisiológico habitual — verificar el dato.");
+    detalles.push("Fuera del rango fisiológico habitual: verificar el dato.");
   }
   return {
     metodoLabel,
@@ -197,6 +197,11 @@ export default async function MacrocicloDetallePage({
 
   const puedeEditar = macrociclo.estado === "borrador";
   const puedeCerrar = macrociclo.estado === "activo" || macrociclo.estado === "borrador";
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const semanaActualId =
+    macrociclo.semanas.find((s) => s.fechaInicio <= hoy && hoy <= s.fechaFin)
+      ?.id ?? null;
   const medidas = (macrociclo.medidasSnapshot as MedidasSnapshot | null) ?? null;
   const vo2max = getVo2maxInfo(
     (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null,
@@ -242,7 +247,7 @@ export default async function MacrocicloDetallePage({
             <h2 className="text-lg font-semibold text-text-primary dark:text-white">
               Próxima sesión
             </h2>
-            <InfoTooltip text="La primera sesión de este macrociclo que todavía no se completó, en orden de semana — incluida una que ya abriste pero no terminaste (queda en 'parcial'). Antes había que buscarla a mano entre todas las sesiones del plan." />
+            <InfoTooltip text="La primera sesión de este macrociclo que todavía no se completó, en orden de semana, incluida una que ya abriste pero no terminaste (queda en 'parcial'). Antes había que buscarla a mano entre todas las sesiones del plan." />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -661,9 +666,19 @@ export default async function MacrocicloDetallePage({
               </thead>
               <tbody className="divide-y divide-gray-200 bg-bg-soft dark:divide-white/8">
                 {macrociclo.semanas.map((semana) => (
-                  <tr key={semana.id}>
+                  <tr
+                    key={semana.id}
+                    className={
+                      semana.id === semanaActualId ? "bg-accent/10" : undefined
+                    }
+                  >
                     <td className="px-4 py-3 text-text-primary dark:text-white">
                       {semana.numeroSemana}
+                      {semana.id === semanaActualId ? (
+                        <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white">
+                          Actual
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-text-secondary">
                       {toISODate(semana.fechaInicio)} - {toISODate(semana.fechaFin)}

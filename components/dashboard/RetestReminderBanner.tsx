@@ -29,7 +29,7 @@ export function RetestReminderBanner({
       <ul className="space-y-1">
         {rmsCaducados.map((rm) => (
           <li key={rm.ejercicioNombre}>
-            {rm.ejercicioNombre} — hace {Math.round(rm.semanasTranscurridas)} semanas
+            {rm.ejercicioNombre}: hace {Math.round(rm.semanasTranscurridas)} semanas
           </li>
         ))}
       </ul>

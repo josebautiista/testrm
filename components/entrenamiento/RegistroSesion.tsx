@@ -56,7 +56,7 @@ function ContextoPanel({ contexto }: { contexto: ContextoSesion }) {
         <h2 className="text-base font-semibold text-text-primary dark:text-white">
           Contexto para programar el WOD
         </h2>
-        <InfoTooltip text="Esto es lo que calcula el mesociclo — tú eliges los ejercicios y escribes el WOD; usa esta zona de %1RM/RIR como referencia de a qué esfuerzo entrenar." />
+        <InfoTooltip text="Esto es lo que calcula el mesociclo: tú eliges los ejercicios y escribes el WOD; usa esta zona de %1RM/RIR como referencia de a qué esfuerzo entrenar." />
       </div>
       <p className="text-sm text-text-secondary">
         Semana {contexto.numeroSemana} · {contexto.objetivoBloqueLabel} ·{" "}
@@ -139,7 +139,7 @@ function WodEditor({
     <section className="space-y-2 rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10">
       <div className="flex items-center">
         <h2 className="text-base font-semibold text-text-primary dark:text-white">WOD</h2>
-        <InfoTooltip text="Escribe aquí los ejercicios de la sesión, en el orden que quieras, con el esquema que decidas (series×reps, carga, AMRAP, EMOM, etc.). Es el registro de lo que se hizo — no hay un registro numérico aparte por serie." />
+        <InfoTooltip text="Escribe aquí los ejercicios de la sesión, en el orden que quieras, con el esquema que decidas (series×reps, carga, AMRAP, EMOM, etc.). Es el registro de lo que se hizo: no hay un registro numérico aparte por serie." />
       </div>
       <textarea
         value={wod}
@@ -230,7 +230,7 @@ function MarcaPersonalPanel({
         <h2 className="text-base font-semibold text-text-primary dark:text-white">
           Posible marca nueva (opcional)
         </h2>
-        <InfoTooltip text="Solo para uno de los 6 ejercicios del catálogo de RM (no para variantes del WOD). Pon el peso y las repeticiones de la serie más pesada o más cercana al fallo que hizo el atleta hoy en ese ejercicio — cuantas menos repeticiones, más precisa la estimación (ideal: entre 1 y 10). Con eso se calcula un posible 1RM (fórmula de Epley) y, si es más alto que el registrado actualmente, se actualiza solo — nunca lo baja. Déjalo vacío si hoy no hizo nada cerca de su máximo." />
+        <InfoTooltip text="Solo para uno de los 6 ejercicios del catálogo de RM (no para variantes del WOD). Pon el peso y las repeticiones de la serie más pesada o más cercana al fallo que hizo el atleta hoy en ese ejercicio: cuantas menos repeticiones, más precisa la estimación (ideal: entre 1 y 10). Con eso se calcula un posible 1RM (fórmula de Epley) y, si es más alto que el registrado actualmente, se actualiza solo, nunca lo baja. Déjalo vacío si hoy no hizo nada cerca de su máximo." />
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <label className="col-span-2 space-y-1 sm:col-span-1">
@@ -293,7 +293,7 @@ function MarcaPersonalPanel({
         ) : (
           <p className="text-xs text-amber-700 dark:text-amber-300">
             Con esas repeticiones no se puede estimar un RM confiable (demasiadas para que la
-            fórmula sea precisa). No se actualizó nada — puedes intentarlo con una serie más
+            fórmula sea precisa). No se actualizó nada, puedes intentarlo con una serie más
             cercana al fallo.
           </p>
         )

@@ -264,7 +264,7 @@ export function ObjetivoBloqueEditor({
           <h3 className="text-base font-semibold text-text-primary dark:text-white">
             Objetivo de bloque
           </h3>
-          <InfoTooltip text="Para qué está entrenando el atleta en este mesociclo (ganar fuerza, tamaño muscular, resistencia, etc.). De esto se derivan automáticamente el %1RM, las repeticiones, el RIR y las series por semana de abajo — puedes ajustarlos después si lo necesitas." />
+          <InfoTooltip text="Para qué está entrenando el atleta en este mesociclo (ganar fuerza, tamaño muscular, resistencia, etc.). De esto se derivan automáticamente el %1RM, las repeticiones, el RIR y las series por semana de abajo; puedes ajustarlos después si lo necesitas." />
         </div>
         <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-4">
           {OBJETIVOS_BLOQUE.map((objetivo) => {
@@ -299,7 +299,7 @@ export function ObjetivoBloqueEditor({
           <h3 className="text-base font-semibold text-text-primary dark:text-white">
             Zona de intensidad
           </h3>
-          <InfoTooltip text="%1RM: porcentaje del peso máximo que el atleta levanta una sola vez (su 1RM). Si el 1RM son 100 kg y la zona dice 80%, la carga a usar es 80 kg. Reps: cuántas repeticiones por serie con esa carga. RIR (repeticiones en reserva): cuántas repeticiones más podría hacer antes de fallar — RIR 2 significa que, al terminar la serie, todavía podría hacer 2 más." />
+          <InfoTooltip text="%1RM: porcentaje del peso máximo que el atleta levanta una sola vez (su 1RM). Si el 1RM son 100 kg y la zona dice 80%, la carga a usar es 80 kg. Reps: cuántas repeticiones por serie con esa carga. RIR (repeticiones en reserva): cuántas repeticiones más podría hacer antes de fallar. RIR 2 significa que, al terminar la serie, todavía podría hacer 2 más." />
         </div>
         <p className="text-xs text-text-tertiary">
           Rango de referencia para {OBJETIVO_BLOQUE_LABEL[data.objetivoBloque]}:{" "}

@@ -341,7 +341,7 @@ export function PasoVo2max({
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200">
           Cooper y Léger exigen esfuerzo máximo (correr hasta el agotamiento).
           No los hagas si tienes una condición cardiovascular, una lesión
-          reciente, estás embarazada o llevas mucho tiempo sin entrenar —
+          reciente, estás embarazada o llevas mucho tiempo sin entrenar,
           consulta primero con un profesional de la salud. Antes de empezar:
           calienta 8-10 minutos, hidrátate, usa calzado adecuado y evita
           hacerlo con calor extremo. Si ya tienes un VO2Max medido (en
@@ -400,7 +400,7 @@ export function PasoVo2max({
             distancia posible durante 12 minutos continuos en una pista plana,
             sin detenerte, y registra la distancia total recorrida. Si no
             puedes correr 12 minutos seguidos con seguridad, no es el test
-            adecuado para ti todavía — coméntaselo a tu entrenador.
+            adecuado para ti todavía: coméntaselo a tu entrenador.
           </p>
 
           {Number.isFinite(distanciaNumero) && distanciaNumero > 0 ? (
@@ -587,7 +587,7 @@ function FormulaRmSelect({
   const options = FORMULAS_RM.map((f) => ({
     value: f.value,
     label: resultado
-      ? `${f.label} — ${formatNumber(getRmValue(resultado, f.value))} kg`
+      ? `${f.label} · ${formatNumber(getRmValue(resultado, f.value))} kg`
       : f.label,
   }));
 
