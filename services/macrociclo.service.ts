@@ -800,6 +800,17 @@ export async function guardarPeriodizacion({
       }
 
       // ---------- Semanas + ejercicios (diff por numeroSemana) ----------
+      // Perf: guardarPeriodizacion corre en UNA transacción interactiva con
+      // timeout fijo (ver `$transaction` más abajo). Hacer un round-trip por
+      // semana y otro por cada ejercicio de cada semana escala como
+      // O(semanas × ejercicios) — con un macrociclo largo (p.ej. 29-31
+      // semanas, típico en objetivos "salud"/"sin_competencia") eso son 150+
+      // round-trips secuenciales, suficientes para agotar el timeout de la
+      // transacción a mitad de camino. Cuando eso pasa, MariaDB hace rollback
+      // de lo ya insertado pero el código sigue enviando la siguiente
+      // consulta, que entonces falla con un FK "fantasma" (referencia una
+      // fila que existía hace un instante). Por eso se agrupan las
+      // creaciones en bloque (`createMany`) en vez de una por una.
       const semanasExistentes = await tx.macrocicloSemana.findMany({
         where: { macrocicloId: id },
         select: { id: true, numeroSemana: true, fechaFin: true },
@@ -808,6 +819,13 @@ export async function guardarPeriodizacion({
         semanasExistentes.map((s) => [s.numeroSemana, s]),
       );
       const semanasInputMap = new Map(semanas.map((s) => [s.numeroSemana, s]));
+
+      const semanasAGuardar: Array<{
+        numeroSemana: number;
+        idExistente?: number;
+        data: Prisma.MacrocicloSemanaCreateManyInput;
+        ejercicios: SemanaInput["ejercicios"];
+      }> = [];
 
       for (const semanaCalculada of calculado.semanas) {
         const existente = semanaExistentePorNumero.get(
@@ -879,51 +897,139 @@ export async function guardarPeriodizacion({
           notas: semanaInput?.notas ?? semanaCalculada.notas,
         };
 
-        let semanaId: number;
-        if (existente) {
-          await tx.macrocicloSemana.update({ where: { id: existente.id }, data });
-          semanaId = existente.id;
-        } else {
-          const creada = await tx.macrocicloSemana.create({ data });
-          semanaId = creada.id;
+        semanasAGuardar.push({
+          numeroSemana: semanaCalculada.numeroSemana,
+          idExistente: existente?.id,
+          data,
+          ejercicios: semanaInput?.ejercicios ?? [],
+        });
+      }
+
+      const semanasNuevas = semanasAGuardar.filter((s) => !s.idExistente);
+      const semanasParaActualizar = semanasAGuardar.filter(
+        (s) => s.idExistente,
+      );
+
+      if (semanasNuevas.length > 0) {
+        await tx.macrocicloSemana.createMany({
+          data: semanasNuevas.map((s) => s.data),
+        });
+      }
+      for (const s of semanasParaActualizar) {
+        await tx.macrocicloSemana.update({
+          where: { id: s.idExistente! },
+          data: s.data,
+        });
+      }
+
+      // Resolver en un solo round-trip los ids que MariaDB asignó a las
+      // semanas recién creadas (createMany no los devuelve).
+      const semanaIdPorNumero = new Map<number, number>(
+        semanasParaActualizar.map((s) => [s.numeroSemana, s.idExistente!]),
+      );
+      if (semanasNuevas.length > 0) {
+        const creadas = await tx.macrocicloSemana.findMany({
+          where: {
+            macrocicloId: id,
+            numeroSemana: { in: semanasNuevas.map((s) => s.numeroSemana) },
+          },
+          select: { id: true, numeroSemana: true },
+        });
+        for (const c of creadas) {
+          semanaIdPorNumero.set(c.numeroSemana, c.id);
         }
+      }
 
-        const ejerciciosInput = semanaInput?.ejercicios ?? [];
-        const ejercicioIdsNuevos = ejerciciosInput.map((e) => e.ejercicioId);
+      // ---------- Ejercicios de todas las semanas afectadas, en bloque ----------
+      const semanaIdsAfectadas = [...semanaIdPorNumero.values()];
+      const ejerciciosExistentes = semanaIdsAfectadas.length > 0
+        ? await tx.macrocicloSemanaEjercicio.findMany({
+            where: { macrocicloSemanaId: { in: semanaIdsAfectadas } },
+          })
+        : [];
+      const ejercicioExistentePorClave = new Map(
+        ejerciciosExistentes.map((e) => [
+          `${e.macrocicloSemanaId}:${e.ejercicioId}`,
+          e,
+        ]),
+      );
 
-        for (const e of ejerciciosInput) {
-          await tx.macrocicloSemanaEjercicio.upsert({
-            where: {
-              macrocicloSemanaId_ejercicioId: {
-                macrocicloSemanaId: semanaId,
-                ejercicioId: e.ejercicioId,
-              },
-            },
-            create: {
+      const ejerciciosACrear: Prisma.MacrocicloSemanaEjercicioCreateManyInput[] =
+        [];
+      const ejerciciosAActualizar: Array<{
+        id: number;
+        data: {
+          formulaRm: string;
+          rm: number;
+          peso: number;
+          volumen: number;
+        };
+      }> = [];
+      const clavesDeseadas = new Set<string>();
+
+      for (const s of semanasAGuardar) {
+        const semanaId = semanaIdPorNumero.get(s.numeroSemana);
+        if (!semanaId) continue;
+
+        // Si el input trae el mismo ejercicio repetido, el último gana
+        // (mismo comportamiento que el upsert secuencial anterior).
+        const ejerciciosPorId = new Map(
+          s.ejercicios.map((e) => [e.ejercicioId, e]),
+        );
+
+        for (const e of ejerciciosPorId.values()) {
+          const clave = `${semanaId}:${e.ejercicioId}`;
+          clavesDeseadas.add(clave);
+          const existenteEj = ejercicioExistentePorClave.get(clave);
+          if (!existenteEj) {
+            ejerciciosACrear.push({
               macrocicloSemanaId: semanaId,
               ejercicioId: e.ejercicioId,
               formulaRm: e.formulaRm,
               rm: e.rm,
               peso: e.peso,
               volumen: e.volumen,
-            },
-            update: {
-              formulaRm: e.formulaRm,
-              rm: e.rm,
-              peso: e.peso,
-              volumen: e.volumen,
-            },
-          });
+            });
+          } else if (
+            existenteEj.formulaRm !== e.formulaRm ||
+            existenteEj.rm !== e.rm ||
+            existenteEj.peso !== e.peso ||
+            existenteEj.volumen !== e.volumen
+          ) {
+            ejerciciosAActualizar.push({
+              id: existenteEj.id,
+              data: {
+                formulaRm: e.formulaRm,
+                rm: e.rm,
+                peso: e.peso,
+                volumen: e.volumen,
+              },
+            });
+          }
         }
+      }
 
-        if (existente) {
-          await tx.macrocicloSemanaEjercicio.deleteMany({
-            where: {
-              macrocicloSemanaId: semanaId,
-              ejercicioId: { notIn: ejercicioIdsNuevos },
-            },
-          });
-        }
+      if (ejerciciosACrear.length > 0) {
+        await tx.macrocicloSemanaEjercicio.createMany({
+          data: ejerciciosACrear,
+        });
+      }
+      for (const u of ejerciciosAActualizar) {
+        await tx.macrocicloSemanaEjercicio.update({
+          where: { id: u.id },
+          data: u.data,
+        });
+      }
+
+      const ejerciciosIdsABorrar = ejerciciosExistentes
+        .filter(
+          (e) => !clavesDeseadas.has(`${e.macrocicloSemanaId}:${e.ejercicioId}`),
+        )
+        .map((e) => e.id);
+      if (ejerciciosIdsABorrar.length > 0) {
+        await tx.macrocicloSemanaEjercicio.deleteMany({
+          where: { id: { in: ejerciciosIdsABorrar } },
+        });
       }
 
       // Semanas a borrar: solo futuras (las pasadas están protegidas) y que
@@ -960,7 +1066,10 @@ export async function guardarPeriodizacion({
         },
       });
     },
-    { timeout: 20000, maxWait: 10000 },
+    // 60s de margen (antes 20s): aun con las creaciones en bloque, un
+    // macrociclo muy largo (30+ semanas) o una conexión lenta a la base no
+    // deberían agotar el timeout de la transacción interactiva.
+    { timeout: 60000, maxWait: 15000 },
   );
 
   return calculado;
