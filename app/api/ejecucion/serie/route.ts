@@ -2,7 +2,8 @@
 // el móvil, con idempotencia por requestId (mismo patrón que Sesion.requestId).
 import { NextRequest, NextResponse } from "next/server";
 
-import { getAuthUserFromRequest, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromRequest } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import { registrarSerie } from "@/services/ejecucion.service";
 
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       select: { id: true, entrenadorId: true },
     });
 
-    if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+    if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
       return NextResponse.json({ error: "Persona no encontrada." }, { status: 404 });
     }
 

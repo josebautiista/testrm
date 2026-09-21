@@ -126,7 +126,12 @@ export async function createPersona(
 
   try {
     return await prisma.persona.create({
-      data: personaData,
+      data: {
+        ...personaData,
+        entrenadores: cleanData.entrenadorId
+          ? { create: { entrenadorId: cleanData.entrenadorId } }
+          : undefined,
+      },
       select: {
         id: true,
         cc: true,

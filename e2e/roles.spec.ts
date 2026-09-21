@@ -1,6 +1,5 @@
 // Roles: admin crea entrenadores; entrenadores no pueden gestionar usuarios
-// pero sí pueden registrar atletas. Y (ADR-52) un entrenador no puede ver ni
-// editar los atletas de otro entrenador.
+// y pueden vincular atletas existentes para trabajar sobre una ficha compartida.
 import { expect, test } from "@playwright/test";
 import bcrypt from "bcrypt";
 
@@ -74,7 +73,7 @@ test.describe("Roles (admin / entrenador)", () => {
     await prisma.persona.delete({ where: { cc } }).catch(() => {});
   });
 
-  test("un entrenador no puede ver ni operar sobre un atleta de otro entrenador (ADR-52)", async ({
+  test("dos entrenadores comparten la misma ficha después de confirmar el vínculo", async ({
     page,
   }) => {
     const suffix = Date.now();
@@ -87,7 +86,7 @@ test.describe("Roles (admin / entrenador)", () => {
     const entrenadorA = await prisma.user.create({
       data: { username: usernameA, password: passwordHash, role: "entrenador" },
     });
-    await prisma.user.create({
+    const entrenadorB = await prisma.user.create({
       data: { username: usernameB, password: passwordHash, role: "entrenador" },
     });
 
@@ -101,24 +100,44 @@ test.describe("Roles (admin / entrenador)", () => {
         talla: 1.8,
         entrenado: true,
         entrenadorId: entrenadorA.id,
+        entrenadores: { create: { entrenadorId: entrenadorA.id } },
       },
     });
 
     try {
-      // El entrenador que NO registró al atleta no puede entrar a su
-      // dashboard ni iniciarle un macrociclo por más que conozca el cc.
       await loginAs(page, usernameB, password);
+      // Sin confirmar todavía no puede operar sobre las sesiones del atleta.
       await page.goto(`/dashboard?cc=${encodeURIComponent(cc)}`);
       await page.waitForURL(/\/atletas/, { timeout: 10_000 });
-
-      await page.goto(`/macrociclo/nuevo?cc=${encodeURIComponent(cc)}`);
-      await page.waitForURL(/\/atletas/, { timeout: 10_000 });
+      await page.getByRole("textbox", { name: "Cédula del atleta" }).fill(cc);
+      await page.getByRole("button", { name: "Buscar o registrar" }).click();
+      await expect(page.locator("#nombre")).toHaveValue("Atleta aislamiento");
+      await expect(page.locator("#masaCorporal")).toHaveValue("80");
+      expect(await prisma.personaEntrenador.count({ where: { entrenadorId: entrenadorB.id } })).toBe(0);
+      await page.locator("#nombre").fill("Atleta compartido");
+      await page.getByRole("button", { name: "Guardar cambios y añadir", exact: true }).click();
+      await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
+      await expect(page.getByRole("heading", { name: "Resumen", exact: true })).toBeVisible();
+      expect(await prisma.persona.count({ where: { cc } })).toBe(1);
+      const compartida = await prisma.persona.findUniqueOrThrow({ where: { cc }, include: { entrenadores: true } });
+      expect(compartida.entrenadores).toHaveLength(2);
+      expect(compartida.entrenado).toBe(true);
+      expect(compartida.nombre).toBe("Atleta compartido");
+      await page.goto("/atletas");
+      await expect(page.getByText("Atleta compartido", { exact: true }).first()).toBeVisible();
 
       // El dueño sí puede.
       await loginAs(page, usernameA, password);
       await page.goto(`/dashboard?cc=${encodeURIComponent(cc)}`);
       await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
-      await expect(page.getByText("Atleta aislamiento")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Resumen", exact: true })).toBeVisible();
+      await page.goto(`/registro?cc=${encodeURIComponent(cc)}`);
+      await page.locator("#edad").fill("29");
+      await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+      await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
+      await loginAs(page, usernameB, password);
+      await page.goto(`/registro?cc=${encodeURIComponent(cc)}`);
+      await expect(page.locator("#edad")).toHaveValue("29");
     } finally {
       await prisma.persona.delete({ where: { cc } }).catch(() => {});
       await prisma.user

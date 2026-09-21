@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { assertAccesoAPersona, getAuthUserFromCookies } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { assertAccesoAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import {
   crearSesionRealizada,
@@ -41,14 +42,14 @@ async function assertAccesoAPersonaId(personaId: number): Promise<void> {
   const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { id: personaId },
-    select: { entrenadorId: true },
+    select: { id: true },
   });
 
   if (!persona) {
     throw new Error("Persona no encontrada.");
   }
 
-  assertAccesoAPersona(authUser, persona.entrenadorId);
+  await assertAccesoAPersona(authUser, persona.id);
 }
 
 async function getPersonaDeSesionRealizada(sesionRealizadaId: number) {

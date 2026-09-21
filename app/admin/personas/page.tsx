@@ -22,7 +22,7 @@ export default async function AdminPersonasPage({
 
   const authUser = await getAuthUserFromCookies();
   const personaWhere: Prisma.PersonaWhereInput =
-    authUser?.role === "admin" ? {} : { entrenadorId: authUser?.userId ?? "" };
+    authUser?.role === "admin" ? {} : { entrenadores: { some: { entrenadorId: authUser?.userId ?? "" } } };
 
   const [total, personas] = await prisma.$transaction([
     prisma.persona.count({ where: personaWhere }),

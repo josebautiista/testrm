@@ -21,7 +21,7 @@ function fechaHaceDias(dias: number): Date {
 export default async function AtletasPage() {
   const authUser = await getAuthUserFromCookies();
   const personaWhere: Prisma.PersonaWhereInput =
-    authUser?.role === "admin" ? {} : { entrenadorId: authUser?.userId ?? "" };
+    authUser?.role === "admin" ? {} : { entrenadores: { some: { entrenadorId: authUser?.userId ?? "" } } };
 
   const dosSemanasAtras = fechaHaceDias(14);
 

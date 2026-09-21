@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import {
   type MedidasSnapshot,
@@ -51,13 +52,11 @@ function getContext() {
   return { userType: "persona" as const };
 }
 
-// ADR-52: cada Server Action de este archivo resuelve la persona a través
-// de este único punto, así que basta reforzarlo aquí para que ninguna quede
-// sin el chequeo de dueño (Persona.entrenadorId vs. el entrenador en sesión).
+// Cada acción verifica que el entrenador esté vinculado al atleta compartido.
 async function getPersona(cc: string) {
   const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({ where: { cc } });
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     return null;
   }
   return persona;

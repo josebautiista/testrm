@@ -14,14 +14,16 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // getAuthUserFromCookies(), que llama a next/headers cookies() y solo
 // funciona dentro de un request de Next.js real -no aquí, donde el test
 // llama a la Server Action directo-. Se mockea solo esa función; el resto
-// de lib/auth (incluida la lógica de autorización real que se está
-// ejerciendo) se queda intacto.
+// de lib/auth y la autorización real de lib/persona-access se mantienen
+// intactos. La fixture vincula al entrenador con su atleta.
+const authFixture = vi.hoisted(() => ({ id: `test-entrenador-${Date.now()}` }));
+
 vi.mock("@/lib/auth", async () => {
   const actual = await vi.importActual<typeof import("@/lib/auth")>("@/lib/auth");
   return {
     ...actual,
     getAuthUserFromCookies: async () => ({
-      userId: "test-entrenador",
+      userId: authFixture.id,
       username: "test-entrenador",
       role: "entrenador" as const,
     }),
@@ -42,6 +44,7 @@ describe.skipIf(!DATABASE_URL)("actions/sesion — integración", () => {
   const sesionIds: number[] = [];
 
   beforeAll(async () => {
+    await prisma.user.create({ data: { id: authFixture.id, username: authFixture.id, password: "unused", role: "entrenador" } });
     const persona = await prisma.persona.create({
       data: {
         cc,
@@ -51,6 +54,7 @@ describe.skipIf(!DATABASE_URL)("actions/sesion — integración", () => {
         edad: 30,
         talla: 1.8,
         entrenado: true,
+        entrenadores: { create: { entrenadorId: authFixture.id } },
       },
     });
     personaId = persona.id;
@@ -74,6 +78,7 @@ describe.skipIf(!DATABASE_URL)("actions/sesion — integración", () => {
       await prisma.sesion.deleteMany({ where: { id: { in: sesionIds } } });
     }
     await prisma.persona.delete({ where: { id: personaId } });
+    await prisma.user.delete({ where: { id: authFixture.id } });
     await prisma.ejercicio.deleteMany({
       where: { esEjercicioLibre: true, nombre: { startsWith: `${cc}-` } },
     });

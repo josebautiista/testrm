@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import { obtenerMacrocicloPorId } from "@/services/macrociclo.service";
 import { TOTAL_PASOS_WIZARD } from "@/lib/macrociclo";
@@ -43,7 +44,7 @@ export default async function EditarMacrocicloPage({
     },
   });
 
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     redirect("/atletas");
   }
 

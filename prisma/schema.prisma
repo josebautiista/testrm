@@ -30,13 +30,15 @@ model Persona {
   equipamiento        Json?     // string[]
   limitaciones         String?
 
-  // Entrenador que registró al atleta. Determina qué entrenador puede verlo
-  // en sus listados; los admin ven todos los atletas sin importar el dueño.
+  // Autor original (legado). El acceso y los listados usan entrenadores.
   entrenadorId String?
   entrenador   User?   @relation(fields: [entrenadorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  entrenadores PersonaEntrenador[]
+  cambiosFicha PersonaCambio[]
 
   sesiones    Sesion[]
   macrociclos Macrociclo[]
@@ -187,6 +189,7 @@ model User {
   createdAt DateTime @default(now())
 
   personasRegistradas Persona[]
+  atletas PersonaEntrenador[]
 }
 
 model Macrociclo {
@@ -529,4 +532,30 @@ model AjustePropuesto {
 
   @@index([personaId, estado])
   @@index([macrocicloId, estado])
+}
+
+// Todos los entrenadores vinculados tienen los mismos permisos.
+model PersonaEntrenador {
+  personaId Int
+  entrenadorId String
+  createdAt DateTime @default(now())
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  entrenador User @relation(fields: [entrenadorId], references: [id], onDelete: Cascade)
+
+  @@id([personaId, entrenadorId])
+  @@index([entrenadorId])
+}
+
+// Conserva la identidad del autor incluso si su cuenta se elimina.
+model PersonaCambio {
+  id Int @id @default(autoincrement())
+  personaId Int
+  autorId String
+  autorNombre String
+  antes Json
+  despues Json
+  createdAt DateTime @default(now())
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([personaId, createdAt])
 }

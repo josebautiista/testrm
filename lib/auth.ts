@@ -81,43 +81,6 @@ export async function requireRole(allowed: readonly Role[]): Promise<AuthUser> {
   return authUser;
 }
 
-/**
- * ADR-52 · aislamiento de datos entre entrenadores (resuelve Q-01): un
- * admin puede acceder a cualquier Persona; un entrenador solo a las que él
- * mismo registró (Persona.entrenadorId). Centralizado aquí para no repetir
- * -y no olvidar- este chequeo en cada página/acción que resuelve una
- * persona por cc o id.
- *
- * `entrenadorId === null` (atletas creados antes de que ese campo existiera,
- * o por un admin) se trata como "sin dueño asignado": cualquier entrenador
- * autenticado puede operarlo, no solo un admin. La alternativa -tratar
- * `null` como admin-only- dejaría inaccesibles de un día para otro atletas
- * reales que ya existían antes de esta migración, sin ninguna forma de
- * reclamarlos.
- */
-export function puedeAccederAPersona(
-  authUser: Pick<AuthUser, "role" | "userId"> | null,
-  entrenadorId: string | null,
-): boolean {
-  if (!authUser) return false;
-  if (authUser.role === "admin" || entrenadorId === null) return true;
-  return entrenadorId === authUser.userId;
-}
-
-/**
- * Igual que `puedeAccederAPersona`, pero para Server Actions/rutas API
- * donde lanzar es más simple que devolver null y que el llamador olvide
- * comprobarlo.
- */
-export function assertAccesoAPersona(
-  authUser: Pick<AuthUser, "role" | "userId"> | null,
-  entrenadorId: string | null,
-): void {
-  if (!puedeAccederAPersona(authUser, entrenadorId)) {
-    throw new Error("No autorizado para operar sobre este atleta.");
-  }
-}
-
 export function getTokenFromRequest(request: NextRequest) {
   return request.cookies.get(AUTH_COOKIE_NAME)?.value ?? null;
 }

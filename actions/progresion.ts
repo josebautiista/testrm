@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
-import { assertAccesoAPersona, getAuthUserFromCookies } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { assertAccesoAPersona } from "@/lib/persona-access";
 import {
   aceptarAjustePropuesto,
   rechazarAjustePropuesto,
@@ -31,14 +32,14 @@ async function assertAjusteDeLaPersona(ajusteId: number, personaId: number) {
   const authUser = await getAuthUserFromCookies();
   const ajuste = await prisma.ajustePropuesto.findUnique({
     where: { id: ajusteId },
-    select: { personaId: true, persona: { select: { entrenadorId: true } } },
+    select: { personaId: true, persona: { select: { id: true } } },
   });
 
   if (!ajuste || ajuste.personaId !== personaId) {
     throw new Error("El ajuste no corresponde a esta persona.");
   }
 
-  assertAccesoAPersona(authUser, ajuste.persona.entrenadorId);
+  await assertAccesoAPersona(authUser, ajuste.persona.id);
 }
 
 export async function aceptarAjusteAction(

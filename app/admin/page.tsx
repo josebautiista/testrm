@@ -11,9 +11,9 @@ import { prisma } from "@/lib/prisma";
 export default async function AdminPage() {
   const authUser = await getAuthUserFromCookies();
   const personaWhere: Prisma.PersonaWhereInput =
-    authUser?.role === "admin" ? {} : { entrenadorId: authUser?.userId ?? "" };
+    authUser?.role === "admin" ? {} : { entrenadores: { some: { entrenadorId: authUser?.userId ?? "" } } };
   const sesionWhere: Prisma.SesionWhereInput =
-    authUser?.role === "admin" ? {} : { persona: { entrenadorId: authUser?.userId ?? "" } };
+    authUser?.role === "admin" ? {} : { persona: { entrenadores: { some: { entrenadorId: authUser?.userId ?? "" } } } };
 
   const [
     totalPersonas,

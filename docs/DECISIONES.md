@@ -1623,6 +1623,9 @@ RmVigente, y repeticiones no utilizables que no actualizan nada).
 
 ## ADR-52 · Aislamiento de datos entre entrenadores (resuelve Q-01)
 
+> Actualizado el 2026-09-21: la propiedad exclusiva se sustituye por los vínculos
+> compartidos descritos en la decisión «Atletas compartidos» al final del documento.
+
 **Contexto.** ADR-25/26 dejaron autenticación (toda la app exige sesión) pero no
 autorización por dueño: `Persona.entrenadorId` (añadido después, sin ADR propia) solo se
 usaba para filtrar dos listados (`/atletas`, `/admin/personas`). Cualquier página o Server
@@ -1689,3 +1692,47 @@ Ver `docs/PLAN-MAESTRO.md` §19.3 para el detalle. Estado tras esta sesión:
 | Q-05 | ¿Qué ejercicios entran más allá de los 6 actuales? | Sin resolver — catálogo ampliado con semántica (`Ejercicio.patron` etc.), pero el conjunto de 6 ejercicios no creció |
 | Q-06 | ¿Autenticación real de persona? | **Resuelto** (ADR-25) |
 | Q-07 | ¿Qué duraciones de macrociclo soportar? | Resuelto de forma general — el motor no está atado a duraciones fijas; probado en 8/12/16/24 semanas (`lib/planificacion/motor.test.ts`) |
+
+
+---
+
+## Atletas compartidos · 2026-09-21 (sustituye la exclusividad de ADR-52)
+
+**Decisión del usuario.** Un atleta puede tener varios entrenadores, todos con
+los mismos permisos para modificar datos, sesiones y planificación. No existe
+entrenador principal ni aprobación de acceso.
+
+**Entrada.** Un entrenador autenticado busca una cédula y consulta los datos
+básicos existentes en `/registro?cc=...`. Confirma «Añadir a mis atletas sin
+modificar» o «Guardar cambios y añadir». La búsqueda sola no crea vínculos.
+Una cédula nueva conserva el registro habitual. La ficha y el historial siguen
+siendo únicos por `Persona.cc`.
+
+**Persistencia y permisos.** `PersonaEntrenador` tiene clave compuesta
+`(personaId, entrenadorId)`. Se migran todas las asignaciones anteriores. Los
+listados usan esos vínculos y `lib/persona-access.ts` verifica pertenencia;
+un administrador mantiene acceso global. Todos los llamadores esperan la
+comprobación asíncrona, incluidas las acciones de sesiones, ajustes y macrociclos.
+`Persona.entrenadorId` se conserva como autor original legado, sin conceder acceso.
+Atletas antiguos sin asignación se pueden consultar por cédula y añadir mediante
+el mismo flujo; no otorgan permisos de escritura hasta confirmar el vínculo.
+
+**Edición compartida.** El formulario muestra peso en kg y talla en metros sin
+volver a interpretar los valores almacenados como libras o centímetros. Solo
+actualiza nombre, sexo, peso, edad y talla: conserva nivel, medidas adicionales,
+entrenado e historial. Guardar comprueba atómicamente `updatedAt`, registra los
+valores anteriores/nuevos y la identidad del autor en `PersonaCambio`, y vincula
+al entrenador dentro de la misma transacción. Ante una versión obsoleta solicita
+recargar; añadir sin modificar conserva siempre los datos actuales. Esta auditoría
+y control de versión cubren el formulario compartido; los formularios de medidas
+y planificación existentes mantienen sus mecanismos propios.
+
+**Migración.** `20260921120000_atletas_compartidos` es aditiva, conserva el historial
+SQL y usa los nombres físicos `Persona` y `User` con su capitalización exacta.
+Aplicar antes de desplegar el código. Validada y aplicada en la base local; no se
+ha desplegado a producción ni probado aquí el historial completo en Linux.
+
+**Verificación.** Pruebas de integración para creación del vínculo inicial,
+permisos de ambos entrenadores, vinculación repetida, conservación de datos,
+autoría y conflicto entre guardados simultáneos. Prueba E2E de búsqueda, edición,
+vinculación y consulta de cambios desde otra cuenta.

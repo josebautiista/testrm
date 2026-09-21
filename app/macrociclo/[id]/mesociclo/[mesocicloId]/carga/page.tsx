@@ -2,7 +2,8 @@ import { notFound, redirect } from "next/navigation";
 
 import { ObjetivoBloqueEditor } from "@/components/macrociclo/ObjetivoBloqueEditor";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import { MESES_POR_TIPO_LABEL, type TipoMesociclo } from "@/lib/macrociclo";
 
@@ -31,7 +32,7 @@ export default async function CargaMesocicloPage({
     select: { id: true, nombre: true, cc: true, entrenadorId: true },
   });
 
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     redirect("/atletas");
   }
 

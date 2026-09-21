@@ -18,7 +18,8 @@ import { calculateEpley } from "@/lib/rm/formulas";
 import { resolverFaseActiva } from "@/lib/planificacion/fase";
 import { MESES_POR_TIPO_LABEL, type TipoMesociclo } from "@/lib/macrociclo";
 import { getUserLevel, isUserLevel } from "@/lib/user-level";
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 
 const formatoFechaBloque = new Intl.DateTimeFormat("es-CO", {
   day: "2-digit",
@@ -173,7 +174,7 @@ export default async function SesionDetailPage({
     },
   });
 
-  if (!sesion || !puedeAccederAPersona(authUser, sesion.persona.entrenadorId)) {
+  if (!sesion || !(await puedeAccederAPersona(authUser, sesion.persona.id))) {
     redirect("/dashboard");
   }
 

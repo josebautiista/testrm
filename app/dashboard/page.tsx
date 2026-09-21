@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import { ICCSection } from "@/components/dashboard/ICCSection";
 import { IMCCard } from "@/components/dashboard/IMCCard";
@@ -138,7 +139,7 @@ export default async function DashboardPage({
     },
   });
 
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     redirect("/atletas");
   }
 

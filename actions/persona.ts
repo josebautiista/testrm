@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
-import { assertAccesoAPersona, getAuthUserFromCookies } from "@/lib/auth";
+import { getAuthUserFromCookies, requireRole } from "@/lib/auth";
+import { assertAccesoAPersona } from "@/lib/persona-access";
 import { createPersona as createPersonaService } from "@/services/persona.service";
 import {
   updateMedidasBasicas,
@@ -12,6 +13,7 @@ import {
   updateDisponibilidad,
   type DisponibilidadInput,
 } from "@/services/persona.service";
+import { guardarYVincularAtleta } from "@/services/atleta-compartido.service";
 import { isUserLevel } from "@/lib/user-level";
 
 export type EntryState = {
@@ -58,22 +60,19 @@ function getString(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-// ADR-52: updateMedidasBasicas/updateNivelOverride/updateDisponibilidad
-// (services/persona.service.ts) reciben el cc y actualizan directo, sin
-// saber quién llama -son servicios puros-. El chequeo de dueño va aquí,
-// que es donde sí hay sesión.
+// Los servicios no conocen la sesión: comprobar aquí el vínculo del entrenador.
 async function assertPuedeEditarPersonaPorCC(cc: string): Promise<void> {
   const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
-    select: { entrenadorId: true },
+    select: { id: true },
   });
 
   if (!persona) {
     throw new Error("No existe una persona con ese CC.");
   }
 
-  assertAccesoAPersona(authUser, persona.entrenadorId);
+  await assertAccesoAPersona(authUser, persona.id);
 }
 
 function parseCreatePersonaInput(
@@ -114,6 +113,7 @@ function parseCreatePersonaInput(
 }
 
 export async function checkPersonaByCC(cc: string) {
+  await requireRole(["admin", "entrenador"]);
   const normalizedCC = normalizeCC(cc);
 
   if (!normalizedCC) {
@@ -129,6 +129,7 @@ export async function checkPersonaByCC(cc: string) {
 }
 
 export async function getPersonaByCC(cc: string) {
+  await requireRole(["admin", "entrenador"]);
   const normalizedCC = normalizeCC(cc);
 
   if (!normalizedCC) {
@@ -145,6 +146,7 @@ export async function getPersonaByCC(cc: string) {
 }
 
 export async function getSessionDatesByCC(cc: string) {
+  await requireRole(["admin", "entrenador"]);
   const normalizedCC = normalizeCC(cc);
 
   if (!normalizedCC) {
@@ -172,10 +174,10 @@ export async function createPersona(
   data: CreatePersonaInput,
 ): Promise<{ ok: true; cc: string } | { ok: false; error: string }> {
   try {
-    const authUser = await getAuthUserFromCookies();
+    const authUser = await requireRole(["admin", "entrenador"]);
     const persona = await createPersonaService({
       ...data,
-      entrenadorId: authUser?.userId ?? null,
+      entrenadorId: authUser.userId,
     });
 
     return { ok: true, cc: persona.cc };
@@ -204,11 +206,7 @@ export async function resolvePersonaEntry(
     };
   }
 
-  const exists = await checkPersonaByCC(cc);
-
-  if (exists) {
-    redirect(`/dashboard?cc=${encodeURIComponent(cc)}`);
-  }
+  await requireRole(["admin", "entrenador"]);
 
   redirect(`/registro?cc=${encodeURIComponent(cc)}`);
 }
@@ -341,4 +339,37 @@ export async function actualizarDisponibilidadAction(
       success: false,
     };
   }
+}
+
+export async function guardarAtletaCompartidoAction(
+  _prevState: RegistroState,
+  formData: FormData,
+): Promise<RegistroState> {
+  const cc = normalizeCC(getString(formData.get("cc")));
+  try {
+    const autor = await requireRole(["admin", "entrenador"]);
+    const editar = formData.get("operacion") === "guardar";
+    const version = getString(formData.get("version"));
+    if (editar && !Number.isFinite(Date.parse(version))) {
+      throw new Error("Recarga la ficha antes de guardar.");
+    }
+    await guardarYVincularAtleta({
+      cc, version, autor,
+      datos: editar ? {
+        nombre: getString(formData.get("nombre")),
+        sexo: getString(formData.get("sexo")),
+        masaCorporal: toFiniteNumber(formData.get("masaCorporal")),
+        edad: toFiniteNumber(formData.get("edad")),
+        talla: toFiniteNumber(formData.get("talla")),
+      } : undefined,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "No fue posible guardar el atleta.", redirectTo: null };
+  }
+  revalidatePath("/atletas");
+  revalidatePath("/admin");
+  revalidatePath("/admin/personas");
+  revalidatePath("/dashboard");
+  revalidatePath("/registro");
+  redirect(`/dashboard?cc=${encodeURIComponent(cc)}`);
 }

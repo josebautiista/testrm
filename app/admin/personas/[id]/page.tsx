@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { Card } from "@/components/admin/Card";
 import { Table } from "@/components/admin/Table";
 import { formatDateTime } from "@/lib/admin";
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 
 type RouteParams = Promise<{ id: string }>;
@@ -41,7 +42,7 @@ export default async function PersonaDetailPage({
     },
   });
 
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     notFound();
   }
 

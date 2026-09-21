@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import { listarAjustesPendientes } from "@/services/progresion.service";
 import { AjustesList } from "@/components/progresion/AjustesList";
@@ -24,7 +25,7 @@ export default async function AjustesPage({
     select: { id: true, nombre: true, entrenadorId: true },
   });
 
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     redirect("/atletas");
   }
 

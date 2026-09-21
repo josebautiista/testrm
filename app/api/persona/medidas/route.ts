@@ -4,7 +4,8 @@ import { PrismaClient } from "@prisma/client";
 
 import { calculateICC, getICCClassification } from "@/helpers/calculations";
 import { validatePersonaMedidasInput } from "@/helpers/validators";
-import { getAuthUserFromRequest, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromRequest } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -44,10 +45,10 @@ export async function POST(request: NextRequest) {
     const authUser = await getAuthUserFromRequest(request);
     const personaExistente = await prisma.persona.findUnique({
       where: { cc },
-      select: { entrenadorId: true },
+      select: { id: true },
     });
 
-    if (!personaExistente || !puedeAccederAPersona(authUser, personaExistente.entrenadorId)) {
+    if (!personaExistente || !(await puedeAccederAPersona(authUser, personaExistente.id))) {
       return NextResponse.json(
         {
           error: "Persona no encontrada.",

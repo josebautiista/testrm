@@ -4,7 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import {
   MESES_POR_ETAPA_LABEL,
@@ -194,7 +195,7 @@ export default async function MacrocicloDetallePage({
     },
   });
 
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     redirect("/atletas");
   }
 

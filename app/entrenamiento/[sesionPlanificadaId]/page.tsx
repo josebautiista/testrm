@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import { RegistroSesion } from "@/components/entrenamiento/RegistroSesion";
 import {
@@ -36,7 +37,7 @@ export default async function EntrenamientoPage({
     select: { id: true, nombre: true, entrenadorId: true },
   });
 
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     redirect("/atletas");
   }
 

@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
-import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { puedeAccederAPersona } from "@/lib/persona-access";
 import { ordenarParaEvaluacion } from "@/lib/rm/estimacion";
 import { NuevaSesionForm } from "./NuevaSesionForm";
 
@@ -65,7 +66,7 @@ export default async function NuevaSesionPage({
     },
   });
 
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     redirect("/atletas");
   }
 

@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 
-import { assertAccesoAPersona, getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { getAuthUserFromCookies } from "@/lib/auth";
+import { assertAccesoAPersona, puedeAccederAPersona } from "@/lib/persona-access";
 import { prisma } from "@/lib/prisma";
 import { calculateRM, calculateRMForSession, roundToTwo } from "@/lib/rm";
 import { calculateEpley } from "@/lib/rm/formulas";
@@ -391,7 +392,7 @@ export async function createSesion(
       if (!persona) {
         throw new Error("Usuario no encontrado.");
       }
-      assertAccesoAPersona(authUser, persona.entrenadorId);
+      await assertAccesoAPersona(authUser, persona.id);
 
       const ejerciciosDB = await tx.ejercicio.findMany({
         select: {
@@ -785,9 +786,9 @@ export async function deleteSesionAction(formData: FormData) {
   const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
-    select: { entrenadorId: true },
+    select: { id: true },
   });
-  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+  if (!persona || !(await puedeAccederAPersona(authUser, persona.id))) {
     redirect("/atletas");
   }
 
