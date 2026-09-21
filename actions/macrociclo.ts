@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   type MedidasSnapshot,
@@ -50,8 +51,16 @@ function getContext() {
   return { userType: "persona" as const };
 }
 
+// ADR-52: cada Server Action de este archivo resuelve la persona a través
+// de este único punto, así que basta reforzarlo aquí para que ninguna quede
+// sin el chequeo de dueño (Persona.entrenadorId vs. el entrenador en sesión).
 async function getPersona(cc: string) {
-  return prisma.persona.findUnique({ where: { cc } });
+  const authUser = await getAuthUserFromCookies();
+  const persona = await prisma.persona.findUnique({ where: { cc } });
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+    return null;
+  }
+  return persona;
 }
 
 function getString(formData: FormData, name: string): string {

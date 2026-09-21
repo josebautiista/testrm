@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 
+import { assertAccesoAPersona, getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calculateRM, calculateRMForSession, roundToTwo } from "@/lib/rm";
 import { calculateEpley } from "@/lib/rm/formulas";
@@ -373,6 +374,8 @@ export async function createSesion(
     throw new Error("No se encontraron ejercicios validos para registrar.");
   }
 
+  const authUser = await getAuthUserFromCookies();
+
   try {
     const createdSesion = await prisma.$transaction(async (tx) => {
       const persona = await tx.persona.findUnique({
@@ -381,12 +384,14 @@ export async function createSesion(
           id: true,
           masaCorporal: true,
           sexo: true,
+          entrenadorId: true,
         },
       });
 
       if (!persona) {
         throw new Error("Usuario no encontrado.");
       }
+      assertAccesoAPersona(authUser, persona.entrenadorId);
 
       const ejerciciosDB = await tx.ejercicio.findMany({
         select: {
@@ -775,6 +780,15 @@ export async function deleteSesionAction(formData: FormData) {
 
   if (!Number.isInteger(sesionId) || sesionId <= 0) {
     redirect(`/dashboard?cc=${encodeURIComponent(cc)}&deleteError=1`);
+  }
+
+  const authUser = await getAuthUserFromCookies();
+  const persona = await prisma.persona.findUnique({
+    where: { cc },
+    select: { entrenadorId: true },
+  });
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+    redirect("/atletas");
   }
 
   await prisma.sesion.deleteMany({

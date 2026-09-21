@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Card } from "@/components/admin/Card";
 import { Table } from "@/components/admin/Table";
 import { formatDateTime } from "@/lib/admin";
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type RouteParams = Promise<{ id: string }>;
@@ -20,6 +21,7 @@ export default async function PersonaDetailPage({
     notFound();
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { id: personaId },
     include: {
@@ -39,7 +41,7 @@ export default async function PersonaDetailPage({
     },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     notFound();
   }
 

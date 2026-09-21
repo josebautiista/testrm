@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { ordenarParaEvaluacion } from "@/lib/rm/estimacion";
 import { NuevaSesionForm } from "./NuevaSesionForm";
 
@@ -53,16 +54,18 @@ export default async function NuevaSesionPage({
     redirect("/atletas");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
     select: {
       id: true,
       masaCorporal: true,
       sexo: true,
+      entrenadorId: true,
     },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     redirect("/atletas");
   }
 

@@ -1,6 +1,8 @@
 // Roles: admin crea entrenadores; entrenadores no pueden gestionar usuarios
-// pero sí pueden registrar atletas.
+// pero sí pueden registrar atletas. Y (ADR-52) un entrenador no puede ver ni
+// editar los atletas de otro entrenador.
 import { expect, test } from "@playwright/test";
+import bcrypt from "bcrypt";
 
 import { login, loginAs, prisma, selectCustomOption } from "./helpers";
 
@@ -70,5 +72,58 @@ test.describe("Roles (admin / entrenador)", () => {
     const persona = await prisma.persona.findUnique({ where: { cc } });
     expect(persona).not.toBeNull();
     await prisma.persona.delete({ where: { cc } }).catch(() => {});
+  });
+
+  test("un entrenador no puede ver ni operar sobre un atleta de otro entrenador (ADR-52)", async ({
+    page,
+  }) => {
+    const suffix = Date.now();
+    const usernameA = `e2e_aislamiento_a_${suffix}`;
+    const usernameB = `e2e_aislamiento_b_${suffix}`;
+    const password = "entrenador1234";
+    const passwordHash = await bcrypt.hash(password, 10);
+    const cc = `E2E-AISLAMIENTO-${suffix}`;
+
+    const entrenadorA = await prisma.user.create({
+      data: { username: usernameA, password: passwordHash, role: "entrenador" },
+    });
+    await prisma.user.create({
+      data: { username: usernameB, password: passwordHash, role: "entrenador" },
+    });
+
+    await prisma.persona.create({
+      data: {
+        cc,
+        nombre: "Atleta aislamiento",
+        sexo: "masculino",
+        masaCorporal: 80,
+        edad: 28,
+        talla: 1.8,
+        entrenado: true,
+        entrenadorId: entrenadorA.id,
+      },
+    });
+
+    try {
+      // El entrenador que NO registró al atleta no puede entrar a su
+      // dashboard ni iniciarle un macrociclo por más que conozca el cc.
+      await loginAs(page, usernameB, password);
+      await page.goto(`/dashboard?cc=${encodeURIComponent(cc)}`);
+      await page.waitForURL(/\/atletas/, { timeout: 10_000 });
+
+      await page.goto(`/macrociclo/nuevo?cc=${encodeURIComponent(cc)}`);
+      await page.waitForURL(/\/atletas/, { timeout: 10_000 });
+
+      // El dueño sí puede.
+      await loginAs(page, usernameA, password);
+      await page.goto(`/dashboard?cc=${encodeURIComponent(cc)}`);
+      await page.waitForURL(/\/dashboard/, { timeout: 10_000 });
+      await expect(page.getByText("Atleta aislamiento")).toBeVisible();
+    } finally {
+      await prisma.persona.delete({ where: { cc } }).catch(() => {});
+      await prisma.user
+        .deleteMany({ where: { username: { in: [usernameA, usernameB] } } })
+        .catch(() => {});
+    }
   });
 });

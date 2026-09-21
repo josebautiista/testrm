@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listarAjustesPendientes } from "@/services/progresion.service";
 import { AjustesList } from "@/components/progresion/AjustesList";
@@ -17,12 +18,13 @@ export default async function AjustesPage({
     redirect("/atletas");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
-    select: { id: true, nombre: true },
+    select: { id: true, nombre: true, entrenadorId: true },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     redirect("/atletas");
   }
 

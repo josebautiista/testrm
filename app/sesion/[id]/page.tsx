@@ -18,6 +18,7 @@ import { calculateEpley } from "@/lib/rm/formulas";
 import { resolverFaseActiva } from "@/lib/planificacion/fase";
 import { MESES_POR_TIPO_LABEL, type TipoMesociclo } from "@/lib/macrociclo";
 import { getUserLevel, isUserLevel } from "@/lib/user-level";
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 
 const formatoFechaBloque = new Intl.DateTimeFormat("es-CO", {
   day: "2-digit",
@@ -143,6 +144,7 @@ export default async function SesionDetailPage({
     redirect("/dashboard");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const sesion = await prisma.sesion.findUnique({
     where: { id: sesionId },
     include: {
@@ -152,6 +154,7 @@ export default async function SesionDetailPage({
           cc: true,
           sexo: true,
           nivelOverride: true,
+          entrenadorId: true,
         },
       },
       resultados: {
@@ -170,7 +173,7 @@ export default async function SesionDetailPage({
     },
   });
 
-  if (!sesion) {
+  if (!sesion || !puedeAccederAPersona(authUser, sesion.persona.entrenadorId)) {
     redirect("/dashboard");
   }
 

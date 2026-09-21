@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
 import { calculateICC, getICCClassification } from "@/helpers/calculations";
 import { validatePersonaMedidasInput } from "@/helpers/validators";
+import { getAuthUserFromRequest, puedeAccederAPersona } from "@/lib/auth";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -23,7 +24,7 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const cc = searchParams.get("cc")?.trim() ?? "";
@@ -37,6 +38,24 @@ export async function POST(request: Request) {
           },
         },
         { status: 400 },
+      );
+    }
+
+    const authUser = await getAuthUserFromRequest(request);
+    const personaExistente = await prisma.persona.findUnique({
+      where: { cc },
+      select: { entrenadorId: true },
+    });
+
+    if (!personaExistente || !puedeAccederAPersona(authUser, personaExistente.entrenadorId)) {
+      return NextResponse.json(
+        {
+          error: "Persona no encontrada.",
+          fieldErrors: {
+            form: "No existe una persona con ese CC.",
+          },
+        },
+        { status: 404 },
       );
     }
 

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   MESES_POR_ETAPA_LABEL,
@@ -180,12 +181,20 @@ export default async function MacrocicloDetallePage({
     redirect("/atletas");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
-    select: { id: true, nombre: true, cc: true, edad: true, sexo: true },
+    select: {
+      id: true,
+      nombre: true,
+      cc: true,
+      edad: true,
+      sexo: true,
+      entrenadorId: true,
+    },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     redirect("/atletas");
   }
 

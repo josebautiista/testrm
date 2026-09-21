@@ -446,9 +446,10 @@ adicional sepa que debe añadirla entonces.
 **Consecuencias.** El usuario "admin" sembrado (`prisma/seed.ts`, `lib/bootstrap.ts`) se
 marca explícitamente `role: "admin"`; cualquier cuenta creada antes de esta migración
 quedó en el default `"entrenador"` y se corrigió manualmente para `username: "admin"`.
-Q-01 (¿multi-entrenador?) sigue sin resolver — puede haber múltiples cuentas
+Q-01 (¿multi-entrenador?) queda parcial en este momento — puede haber múltiples cuentas
 `role: "entrenador"`, pero no hay aislamiento de datos entre ellas (cualquier entrenador
-ve todos los atletas), que es lo que esa pregunta realmente plantea.
+ve todos los atletas), que es lo que esa pregunta realmente plantea. **Resuelto después en
+ADR-52.**
 
 **Fecha.** 2026-08-27. **Estado.** Implementado. Cobertura: `e2e/roles.spec.ts`.
 
@@ -1620,13 +1621,68 @@ RmVigente, y repeticiones no utilizables que no actualizan nada).
 
 ---
 
+## ADR-52 · Aislamiento de datos entre entrenadores (resuelve Q-01)
+
+**Contexto.** ADR-25/26 dejaron autenticación (toda la app exige sesión) pero no
+autorización por dueño: `Persona.entrenadorId` (añadido después, sin ADR propia) solo se
+usaba para filtrar dos listados (`/atletas`, `/admin/personas`). Cualquier página o Server
+Action que resolvía una persona por `cc` o por un id numérico (macrociclo, sesión, sesión
+planificada/realizada, ajuste propuesto) no comprobaba si el entrenador autenticado era el
+dueño — bastaba con conocer/adivinar la cédula o navegar directo a una URL para leer y
+**escribir** (registrar RM, editar disponibilidad, aceptar/rechazar ajustes, registrar
+series, guardar el WOD) sobre el atleta de otro entrenador. Confirmado explícitamente por
+el usuario que el modelo deseado es aislamiento total: cada entrenador solo opera sus
+propios atletas; un admin sigue viendo todo.
+
+**Decisión.** `lib/auth.ts` gana dos funciones centralizadas —
+`puedeAccederAPersona(authUser, entrenadorId)` (booleano, para páginas que redirigen/hacen
+`notFound()`) y `assertAccesoAPersona(...)` (lanza, para Server Actions/rutas API que ya
+manejan errores con try/catch)— y se aplicaron en cada punto de acceso a datos de una
+Persona que no pasaba ya por el filtro de los listados:
+
+- Páginas: `app/dashboard`, `app/ajustes`, `app/sesion/[id]`, `app/nueva-sesion`,
+  `app/entrenamiento/[sesionPlanificadaId]`, `app/macrociclo/[id]` (detalle, `editar`,
+  `nuevo`, `mesociclo/[mesocicloId]/carga`), `app/admin/personas/[id]`.
+- Server Actions: `actions/macrociclo.ts` tenía ya un único punto de resolución
+  (`getPersona(cc)`) reusado por ~15 acciones — bastó reforzar ahí. `actions/sesion.ts`
+  (`createSesion`, `deleteSesionAction`), `actions/persona.ts` (medidas, nivel,
+  disponibilidad), `actions/progresion.ts` (aceptar/rechazar ajuste — antes solo
+  comprobaba que el `ajusteId` existiera, no que `personaId` coincidiera con lo que decía
+  el cliente ni que esa persona fuera del entrenador) y `actions/ejecucion.ts` (iniciar
+  sesión, registrar serie, completar, omitir, guardar WOD — todas resolvían solo por id
+  numérico, sin ningún cc) se revisaron una por una.
+- Rutas API: `app/api/ejecucion/serie` y `app/api/persona/medidas` (esta última hacía
+  `update` directo sin leer antes; se le agregó una lectura previa para poder comprobar
+  dueño).
+
+`app/admin/page.tsx` y los dos listados ya filtraban correctamente y no se tocaron.
+
+`entrenadorId === null` (atletas creados antes de la migración que agregó esta columna —
+verificado en producción: 2 de 5 personas existentes— o creados por un admin) se trata
+como "sin dueño": cualquier entrenador autenticado puede operarlo, no solo un admin.
+Tratar `null` como admin-only habría dejado esos atletas reales inaccesibles de un día
+para otro, sin ninguna forma de reclamarlos.
+
+**Consecuencias.** Un entrenador que no es dueño de una `Persona` recibe el mismo
+resultado que si no existiera (`redirect("/atletas")` o `notFound()` en páginas, mensaje
+de "no encontrado"/"no autorizado" en acciones) — no se distingue "no existe" de "no es
+tuyo", para no confirmar por otra vía que una cédula está registrada. `Persona.cc` sigue
+siendo único globalmente: dos entrenadores no pueden terminar con dos personas para el
+mismo atleta real, así que este ADR no introduce ese caso, solo cierra el acceso cruzado a
+la que ya existe. Cobertura: `e2e/roles.spec.ts` ("un entrenador no puede ver ni operar
+sobre un atleta de otro entrenador").
+
+**Fecha.** 2026-09-14. **Estado.** Implementado.
+
+---
+
 ## Preguntas abiertas del plan aún sin resolver
 
 Ver `docs/PLAN-MAESTRO.md` §19.3 para el detalle. Estado tras esta sesión:
 
 | # | Pregunta | Estado |
 |---|---|---|
-| Q-01 | ¿Multi-entrenador o un solo entrenador? | Parcial — ahora puede haber varias cuentas `role: "entrenador"` (ADR-26), pero sin aislamiento de datos entre ellas |
+| Q-01 | ¿Multi-entrenador o un solo entrenador? | **Resuelto** (ADR-52): multi-entrenador con aislamiento total de datos por `entrenadorId` |
 | Q-02 | ¿Quién registra el entrenamiento? | **Resuelto**: el entrenador |
 | Q-03 | ¿Se recalibran los coeficientes de masa corporal? | Sin resolver (ADR-16) |
 | Q-04 | ¿Direcciones en minutos o se simplifican? | **Resuelto** (ADR-47): se simplifican — el paso 7 pasa a editar objetivo de bloque (%1RM/reps/RIR/series por patrón), `MesocicloCarga` queda sin escribir |

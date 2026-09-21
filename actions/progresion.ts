@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
-import { getAuthUserFromCookies } from "@/lib/auth";
+import { assertAccesoAPersona, getAuthUserFromCookies } from "@/lib/auth";
 import {
   aceptarAjustePropuesto,
   rechazarAjustePropuesto,
@@ -22,11 +22,31 @@ async function getPersonaCCById(personaId: number): Promise<string | null> {
   return persona?.cc ?? null;
 }
 
+// ADR-52: personaId llega desde el cliente junto al ajuste que se ve en
+// /ajustes, pero ni aceptarAjustePropuesto ni rechazarAjustePropuesto
+// comprueban dueño (solo el ajusteId). Sin esto, un entrenador podría
+// aceptar/rechazar el ajuste de un atleta que no es suyo con solo cambiar
+// el personaId enviado.
+async function assertAjusteDeLaPersona(ajusteId: number, personaId: number) {
+  const authUser = await getAuthUserFromCookies();
+  const ajuste = await prisma.ajustePropuesto.findUnique({
+    where: { id: ajusteId },
+    select: { personaId: true, persona: { select: { entrenadorId: true } } },
+  });
+
+  if (!ajuste || ajuste.personaId !== personaId) {
+    throw new Error("El ajuste no corresponde a esta persona.");
+  }
+
+  assertAccesoAPersona(authUser, ajuste.persona.entrenadorId);
+}
+
 export async function aceptarAjusteAction(
   ajusteId: number,
   personaId: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
+    await assertAjusteDeLaPersona(ajusteId, personaId);
     const resueltoPor = await getResueltoPor();
     await aceptarAjustePropuesto(ajusteId, resueltoPor);
 
@@ -47,6 +67,7 @@ export async function rechazarAjusteAction(
   personaId: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
+    await assertAjusteDeLaPersona(ajusteId, personaId);
     const resueltoPor = await getResueltoPor();
     await rechazarAjustePropuesto(ajusteId, resueltoPor);
 

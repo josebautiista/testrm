@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RegistroSesion } from "@/components/entrenamiento/RegistroSesion";
 import {
@@ -29,12 +30,13 @@ export default async function EntrenamientoPage({
     redirect("/atletas");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
-    select: { id: true, nombre: true },
+    select: { id: true, nombre: true, entrenadorId: true },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     redirect("/atletas");
   }
 

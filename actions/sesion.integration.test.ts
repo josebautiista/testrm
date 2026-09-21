@@ -8,7 +8,25 @@
 import "dotenv/config";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// ADR-52: createSesion ahora resuelve el entrenador en sesión vía
+// getAuthUserFromCookies(), que llama a next/headers cookies() y solo
+// funciona dentro de un request de Next.js real -no aquí, donde el test
+// llama a la Server Action directo-. Se mockea solo esa función; el resto
+// de lib/auth (incluida la lógica de autorización real que se está
+// ejerciendo) se queda intacto.
+vi.mock("@/lib/auth", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/auth")>("@/lib/auth");
+  return {
+    ...actual,
+    getAuthUserFromCookies: async () => ({
+      userId: "test-entrenador",
+      username: "test-entrenador",
+      role: "entrenador" as const,
+    }),
+  };
+});
 
 import { createSesion } from "./sesion";
 

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { assertAccesoAPersona, getAuthUserFromCookies } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   crearSesionRealizada,
@@ -32,6 +33,32 @@ async function getPersonaDeSesionPlanificada(sesionPlanificadaId: number) {
   return sesionPlanificada.semana.macrociclo.personaId;
 }
 
+// ADR-52: estas acciones solo reciben ids numéricos (sesionPlanificadaId /
+// sesionRealizadaId), sin el cc que permitiría filtrar por dueño como en
+// otras partes de la app. Se resuelve la Persona detrás de ese id y se
+// verifica ahí.
+async function assertAccesoAPersonaId(personaId: number): Promise<void> {
+  const authUser = await getAuthUserFromCookies();
+  const persona = await prisma.persona.findUnique({
+    where: { id: personaId },
+    select: { entrenadorId: true },
+  });
+
+  if (!persona) {
+    throw new Error("Persona no encontrada.");
+  }
+
+  assertAccesoAPersona(authUser, persona.entrenadorId);
+}
+
+async function getPersonaDeSesionRealizada(sesionRealizadaId: number) {
+  const sesionRealizada = await prisma.sesionRealizada.findUniqueOrThrow({
+    where: { id: sesionRealizadaId },
+    select: { personaId: true },
+  });
+  return sesionRealizada.personaId;
+}
+
 /**
  * P-07 · TASK-041: obtiene la SesionRealizada "en curso" para esta
  * SesionPlanificada, o crea una nueva si no existe todavía.
@@ -41,6 +68,7 @@ export async function iniciarOContinuarSesionAction(
 ): Promise<{ ok: true; sesionRealizadaId: number } | { ok: false; error: string }> {
   try {
     const personaId = await getPersonaDeSesionPlanificada(sesionPlanificadaId);
+    await assertAccesoAPersonaId(personaId);
 
     const existente = await prisma.sesionRealizada.findFirst({
       where: { sesionPlanificadaId, estado: { in: ["parcial"] } },
@@ -86,6 +114,7 @@ export async function registrarSerieAction(
       where: { id: input.sesionRealizadaId },
       select: { personaId: true },
     });
+    await assertAccesoAPersonaId(sesionRealizada.personaId);
 
     const serie = await registrarSerie(
       {
@@ -117,6 +146,10 @@ export async function completarSesionAction(
   rpeSesion: number | null = null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
+    await assertAccesoAPersonaId(
+      await getPersonaDeSesionRealizada(sesionRealizadaId),
+    );
+
     const sesionRealizada = await prisma.sesionRealizada.update({
       where: { id: sesionRealizadaId },
       data: { estado: "completa", rpeSesion },
@@ -164,6 +197,10 @@ export async function omitirSesionAction(
       return { ok: false, error: "Selecciona un motivo válido." };
     }
 
+    await assertAccesoAPersonaId(
+      await getPersonaDeSesionRealizada(sesionRealizadaId),
+    );
+
     const motivo = codificarMotivoOmision(
       motivoCodigo as CodigoMotivoOmision,
       motivoDetalle,
@@ -195,6 +232,9 @@ export async function guardarWodAction(
   wod: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
+    await assertAccesoAPersonaId(
+      await getPersonaDeSesionPlanificada(sesionPlanificadaId),
+    );
     await guardarWodSesionPlanificada(sesionPlanificadaId, wod);
     revalidatePath(`/entrenamiento/${sesionPlanificadaId}?cc=${encodeURIComponent(cc)}`);
     return { ok: true };

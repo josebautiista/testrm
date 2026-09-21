@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
-import { getAuthUserFromCookies } from "@/lib/auth";
+import { assertAccesoAPersona, getAuthUserFromCookies } from "@/lib/auth";
 import { createPersona as createPersonaService } from "@/services/persona.service";
 import {
   updateMedidasBasicas,
@@ -56,6 +56,24 @@ function toFiniteNumber(value: FormDataEntryValue | null) {
 
 function getString(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+// ADR-52: updateMedidasBasicas/updateNivelOverride/updateDisponibilidad
+// (services/persona.service.ts) reciben el cc y actualizan directo, sin
+// saber quién llama -son servicios puros-. El chequeo de dueño va aquí,
+// que es donde sí hay sesión.
+async function assertPuedeEditarPersonaPorCC(cc: string): Promise<void> {
+  const authUser = await getAuthUserFromCookies();
+  const persona = await prisma.persona.findUnique({
+    where: { cc },
+    select: { entrenadorId: true },
+  });
+
+  if (!persona) {
+    throw new Error("No existe una persona con ese CC.");
+  }
+
+  assertAccesoAPersona(authUser, persona.entrenadorId);
 }
 
 function parseCreatePersonaInput(
@@ -239,6 +257,7 @@ export async function actualizarMedidasBasicasAction(
   const talla = toFiniteNumber(formData.get("talla"));
 
   try {
+    await assertPuedeEditarPersonaPorCC(cc);
     const persona = await updateMedidasBasicas(cc, { masaCorporal, talla });
 
     return {
@@ -269,6 +288,7 @@ export async function updateNivelOverrideAction(cc: string, nivel: string | null
 
   const parsedNivel = nivel !== null && isUserLevel(nivel) ? nivel : null;
 
+  await assertPuedeEditarPersonaPorCC(normalizedCC);
   await updateNivelOverride(normalizedCC, parsedNivel);
 
   revalidatePath("/dashboard");
@@ -308,6 +328,7 @@ export async function actualizarDisponibilidadAction(
   };
 
   try {
+    await assertPuedeEditarPersonaPorCC(cc);
     await updateDisponibilidad(cc, input);
     revalidatePath("/dashboard");
     return { error: null, success: true };

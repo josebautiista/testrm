@@ -1,7 +1,8 @@
 // TASK-038 · POST /api/ejecucion/serie — registro rápido de una serie desde
 // el móvil, con idempotencia por requestId (mismo patrón que Sesion.requestId).
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
+import { getAuthUserFromRequest, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { registrarSerie } from "@/services/ejecucion.service";
 
@@ -27,7 +28,7 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const cc = searchParams.get("cc")?.trim() ?? "";
@@ -39,12 +40,13 @@ export async function POST(request: Request) {
       );
     }
 
+    const authUser = await getAuthUserFromRequest(request);
     const persona = await prisma.persona.findUnique({
       where: { cc },
-      select: { id: true },
+      select: { id: true, entrenadorId: true },
     });
 
-    if (!persona) {
+    if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
       return NextResponse.json({ error: "Persona no encontrada." }, { status: 404 });
     }
 

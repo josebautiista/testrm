@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ICCSection } from "@/components/dashboard/ICCSection";
 import { IMCCard } from "@/components/dashboard/IMCCard";
@@ -115,6 +116,7 @@ export default async function DashboardPage({
     redirect("/atletas");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
     select: {
@@ -132,10 +134,11 @@ export default async function DashboardPage({
       minutosPorSesion: true,
       equipamiento: true,
       limitaciones: true,
+      entrenadorId: true,
     },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     redirect("/atletas");
   }
 

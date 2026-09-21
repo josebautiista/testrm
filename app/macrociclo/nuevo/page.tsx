@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { crearORecuperarBorrador } from "@/services/macrociclo.service";
 
@@ -16,12 +17,13 @@ export default async function NuevoMacrocicloPage({
     redirect("/atletas");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
-    select: { id: true },
+    select: { id: true, entrenadorId: true },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     redirect("/atletas");
   }
 
