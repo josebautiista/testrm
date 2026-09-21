@@ -1,0 +1,16 @@
+# Kubernetes asigna automáticamente un NodePort disponible.
+# Conecta usando la IP pública del VPS y ese NodePort.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: mysql-externo
+spec:
+  type: NodePort
+  selector:
+    app: mysql-externo
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+      protocol: TCP
